@@ -28,6 +28,17 @@ export async function listRecords<T>(kind: string, limit = 50): Promise<Array<Re
   });
 }
 
+export async function getRecord<T>(id: number): Promise<RecordRow<T> | null> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ id: number; kind: string; title: string; data: string; created_at: number }>('SELECT * FROM records WHERE id = ?', id);
+  if (!r) return null;
+  try {
+    return { ...r, data: JSON.parse(r.data) as T };
+  } catch {
+    return null;
+  }
+}
+
 export async function deleteRecord(id: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM records WHERE id = ?', id);

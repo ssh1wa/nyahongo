@@ -10,6 +10,7 @@ import { deleteDict, downloadDict, localDictInfo, remoteDictInfo, type DictInfo 
 import { ATTRIBUTION as GRAMMAR_ATTRIBUTION } from '../lib/grammar';
 import { listModels, testModel, type ModelInfo } from '../lib/llm';
 import { getPcUrl, pingPc, setPcUrl } from '../lib/packages';
+import { deepseekSearch, loadOwnSearchKey, saveOwnSearchKey } from '../lib/search';
 import { DEFAULT_LLM, loadLlmSettings, saveLlmSettings, visionEndpoint, type Level, type LlmSettings } from '../lib/settings';
 import { ACCENTS, radius, TEXT_SCALES, useColors, useTheme, type AccentId, type ThemeMode } from '../theme';
 
@@ -32,6 +33,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="height">
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
           <AiSection />
+          <SearchSection />
           <LearningSection />
           <AppearanceSection />
           <PcSection />
@@ -306,6 +308,65 @@ function ModelPicker({ models, loading, visionOnly, current, onRefresh, onPick, 
         ) : null}
       </ScrollView>
     </View>
+  );
+}
+
+// ---------- 联网搜索 ----------
+
+function SearchSection() {
+  const c = useColors();
+  const [own, setOwn] = useState('');
+  const [reuse, setReuse] = useState(false);
+  const [show, setShow] = useState(false);
+  const [test, setTest] = useState<TestState>({ status: 'idle' });
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    loadOwnSearchKey().then(setOwn);
+    loadLlmSettings().then((s) => setReuse(s.baseUrl.includes('api.deepseek.com') && !!s.apiKey));
+  }, []);
+  const change = (v: string) => {
+    setOwn(v);
+    setTest({ status: 'idle' });
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => void saveOwnSearchKey(v), 500);
+  };
+  const run = async () => {
+    setTest({ status: 'testing' });
+    await saveOwnSearchKey(own);
+    const started = Date.now();
+    try {
+      const hits = await deepseekSearch('日本語 勉強', { count: 3 });
+      setTest({ status: 'ok', text: `可用 · 搜到 ${hits.length} 条 · ${((Date.now() - started) / 1000).toFixed(1)} 秒` });
+    } catch (e) {
+      setTest({ status: 'fail', text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  return (
+    <>
+      <SectionLabel>联网搜索</SectionLabel>
+      <Card style={{ gap: 12 }}>
+        <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
+          「AI 写读物」联网查资料、「网上找读物」全网搜索，用的是 DeepSeek 官方的搜索接口（每千次约 0.75 美元，搜不到不收费）。DeepInfra 没有搜索接口，所以这里要单独填 DeepSeek 的 Key；文字和识图模型不受影响。
+        </Text>
+        <Field
+          label="DeepSeek API Key（platform.deepseek.com）"
+          value={own}
+          onChange={change}
+          secure={!show}
+          placeholder={reuse ? '文字模型已经是 DeepSeek，留空就复用' : '不填就只能搜日语维基百科'}
+          right={<Pressable onPress={() => setShow((v) => !v)} hitSlop={8} style={{ padding: 8 }}>{show ? <EyeOff size={18} color={c.muted} /> : <Eye size={18} color={c.muted} />}</Pressable>}
+        />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ flex: 1, color: c.muted, fontSize: 12 }}>
+            {own.trim() || reuse ? '当前：全网搜索（DeepSeek）' : '当前：只搜日语维基百科（免费）'}
+          </Text>
+          <Button label="测试" kind="secondary" small onPress={run} loading={test.status === 'testing'} disabled={!own.trim() && !reuse} />
+        </View>
+        {test.status === 'ok' ? <StatusLine ok text={test.text!} /> : test.status === 'fail' ? <StatusLine text={test.text!} /> : null}
+      </Card>
+    </>
   );
 }
 

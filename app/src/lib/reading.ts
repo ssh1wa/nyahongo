@@ -4,6 +4,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { normalizeSegments, segmentsText } from './furigana';
 import { arr, requestJson, str } from './llm';
 import { addRecord, listRecords, updateRecord, type RecordRow } from './records';
+import { deepseekFetch, deepseekSearch, searchMode, wikipediaSearch, wikipediaText } from './search';
 import { loadLlmSettings, type LlmSettings } from './settings';
 import type { FuriganaSegment } from './types';
 
@@ -27,6 +28,7 @@ export type Article = {
   sourceUrl?: string;
   level: string;
   paragraphs: ReadingSentence[][];
+  references?: Array<{ title: string; url: string; site?: string }>; // AI 联网写读物时参考的资料
 };
 
 export const SOURCE_LABEL: Record<ArticleSource, string> = {
@@ -112,7 +114,22 @@ export async function ocrImages(
 const LENGTHS = { short: '约 300 字', medium: '约 600 字', long: '约 1000 字' };
 export type ArticleLength = keyof typeof LENGTHS;
 
-export async function generateArticle(request: string, length: ArticleLength): Promise<{ title: string; text: string }> {
+/** 常读每天用同一个提示词，靠这些避免写重复：以前写过的标题、用过的网页。 */
+export type AvoidRepeat = { titles?: string[]; urls?: string[] };
+
+/** 只说「别重复标题」不够：AI 会写同一原理的另一面（蓝天→晚霞），所以要求连相近的主题一起避开。 */
+const AVOID_RULE = '这次必须换一个明显不同的主题：不能是同一个现象、原理或事件的另一个角度、延伸或相关问题；最近几篇在同一个领域的话，换一个领域';
+
+const avoidNote = (avoid?: AvoidRepeat) => (avoid?.titles?.length
+  ? `\n- 用户以前已经读过下面这些（最新的在前）。${AVOID_RULE}：${avoid.titles.slice(0, 40).join('；')}`
+  : '');
+
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export async function generateArticle(request: string, length: ArticleLength, avoid?: AvoidRepeat): Promise<{ title: string; text: string }> {
   const settings = await loadLlmSettings();
   return requestJson(settings, [
     {
@@ -122,11 +139,112 @@ export async function generateArticle(request: string, length: ArticleLength): P
 - 只用这个水平能理解的词汇和语法，偶尔出现一两个稍难的词也可以，但整体要读得懂
 - 内容具体、有细节、自然，像真实的文章或故事，不要写成教科书例句的堆砌
 - 正文分成几个自然段，段落之间用换行分隔；不要在文中加注音、括号读音或中文
-- 长度：${LENGTHS[length]}
+- 长度：${LENGTHS[length]}${avoidNote(avoid)}
 只返回 JSON：{"title":"日语标题","text":"日语正文"}`,
     },
     { role: 'user', content: request.trim() || '写一篇有意思的日常短文' },
   ], (raw) => ({ title: str(raw?.title, '读物'), text: str(raw?.text) }), { temperature: 0.8, maxTokens: 4000 });
+}
+
+export type Reference = { title: string; url: string; site?: string; text: string };
+export type ResearchStage = 'keywords' | 'searching' | 'writing';
+
+/** 新闻要的是最近几天的报道；没有日期的结果不确定新旧，排在后面。 */
+const RECENT_DAYS = 10;
+const isRecent = (date: string | null) => !!date && Date.now() - new Date(date).getTime() < RECENT_DAYS * 86400000;
+
+/**
+ * 先联网查资料，再以资料为依据按学习者水平写读物。
+ * 有 DeepSeek Key 时全网搜索（日文、中文关键词各搜一次），没有时搜日语维基百科。
+ */
+export async function researchAndWrite(
+  request: string,
+  length: ArticleLength,
+  onStage: (stage: ResearchStage, detail?: string) => void,
+  avoid?: AvoidRepeat,
+): Promise<{ title: string; subject: string; text: string; references: Array<{ title: string; url: string; site?: string }> }> {
+  const settings = await loadLlmSettings();
+  const mode = await searchMode();
+
+  onStage('keywords');
+  const keywords = await requestJson(settings, [
+    {
+      role: 'system',
+      content: `把用户想读的内容变成网络搜索关键词。今天是 ${today()}。
+只返回 JSON：{"subject":"这次具体写什么（一句中文）","ja":"日语关键词（用于搜日文资料）","zh":"中文关键词","topic":"这个主题在日语维基百科上的词条名","recent":是否需要最近几天的新闻}。
+- 要求很宽泛时（如「每天一篇科普」「今天的新闻」），先自己选一个具体主题或事件写进 subject，关键词围绕它
+- 要求是新闻、时事、最近发生的事时 recent 为 true，关键词里不要写具体日期
+- 关键词要短（2-6 个词），用主题的正式叫法；topic 只写词条名本身，不加其他词${avoid?.titles?.length ? `
+- 用户以前已经读过下面这些（最新的在前）。${AVOID_RULE}：${avoid.titles.slice(0, 40).join('；')}` : ''}
+例：「随机森林是什么」→ {"subject":"随机森林的原理","ja":"ランダムフォレスト 仕組み","zh":"随机森林 原理","topic":"ランダムフォレスト","recent":false}`,
+    },
+    { role: 'user', content: request },
+  ], (r) => ({ subject: str(r?.subject), ja: str(r?.ja), zh: str(r?.zh), topic: str(r?.topic), recent: r?.recent === true }), { temperature: avoid?.titles?.length ? 0.7 : 0.1, maxTokens: 300 });
+  const usedUrls = new Set(avoid?.urls ?? []);
+
+  onStage('searching', mode === 'deepseek' ? '全网搜索' : '日语维基百科');
+  let refs: Reference[] = [];
+  if (mode === 'deepseek') {
+    const results = await Promise.allSettled(
+      [keywords.ja, keywords.zh].filter(Boolean).map((q) => deepseekSearch(q, { count: keywords.recent ? 10 : 6, needContent: true, question: keywords.subject || request })),
+    );
+    // 两路都失败（Key 无效、余额不足等）要把原因报出来，不能当成「没搜到」
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed && results.every((r) => r.status === 'rejected')) throw failed.reason;
+    const lists = results.map((r) => (r.status === 'fulfilled' ? r.value : []));
+    const seen = new Set<string>();
+    // 同一个网站最多取 2 篇（中文搜索常常一个站点返回好几篇几乎一样的页面）
+    const perSite = new Map<string, number>();
+    const host = (u: string) => u.replace(/^https?:\/\//, '').split('/')[0];
+    refs = lists.flat()
+      .filter((h) => h.content.trim() && !usedUrls.has(h.url) && !seen.has(h.url) && (seen.add(h.url), true))
+      // 新闻优先最近几天的报道，同样新的再按相关度
+      .sort((a, b) => (keywords.recent ? Number(isRecent(b.date)) - Number(isRecent(a.date)) : 0) || b.score - a.score)
+      .filter((h) => {
+        const n = perSite.get(host(h.url)) ?? 0;
+        perSite.set(host(h.url), n + 1);
+        return n < 2;
+      })
+      .slice(0, 4)
+      .map((h) => ({ title: h.title, url: h.url, site: h.site, text: h.content.slice(0, 2500) }));
+  } else {
+    // 维基百科是全文搜索，多加的词（仕組み 等）会把结果带偏，所以先按词条名直接取，取不到再搜
+    const topic = keywords.topic || keywords.ja.split(/\s+/)[0] || request;
+    // 网络或接口出错要直接报出来，不能当成「没搜到」
+    const directUrl = `https://ja.wikipedia.org/wiki/${encodeURIComponent(topic)}`;
+    const direct = usedUrls.has(directUrl) ? '' : await wikipediaText(topic, 3000);
+    if (direct) {
+      refs = [{ title: topic, url: `https://ja.wikipedia.org/wiki/${encodeURIComponent(topic)}`, site: '日语维基百科', text: direct }];
+    } else {
+      const hits = await wikipediaSearch(topic, 3);
+      refs = (await Promise.all(hits.filter((h) => !usedUrls.has(h.url)).slice(0, 2).map(async (h) => ({ title: h.title, url: h.url, site: h.site, text: await wikipediaText(h.title, 2500) }))))
+        .filter((r) => r.text);
+    }
+  }
+  if (!refs.length) throw new Error('没有搜到可用的资料。可以换个说法，或者关掉「联网查资料」直接让 AI 写');
+
+  onStage('writing', `参考 ${refs.length} 篇资料`);
+  const out = await requestJson(settings, [
+    {
+      role: 'system',
+      content: `你是给中文母语日语学习者写科普/分级读物的作者。学习者水平：${settings.level}。
+下面给你几篇网上找到的资料（编号 0、1、2…）。根据资料写一篇日语读物，回答用户想了解的问题：
+- 内容以资料为准，资料里没有的事实不要编；资料之间矛盾时按更可靠的写，或者说明有不同说法
+- 语言用 ${settings.level} 能读懂的词汇和语法；专业术语可以保留，但第一次出现时用简单的日语解释
+- 用具体的例子把概念讲清楚，像写给普通人看的科普，不要堆砌术语
+- 正文分自然段，段落之间换行；不要加注音、括号读音或中文，不要在正文里写资料编号
+- 长度：${LENGTHS[length]}${avoidNote(avoid)}
+只返回 JSON：{"title":"日语标题","text":"日语正文","used":[实际参考了的资料编号]}`,
+    },
+    { role: 'user', content: JSON.stringify({ request, subject: keywords.subject || undefined, today: keywords.recent ? today() : undefined, references: refs.map((r, i) => ({ id: i, title: r.title, text: r.text })) }) },
+  ], (r) => ({
+    title: str(r?.title, '读物'),
+    text: str(r?.text),
+    used: Array.isArray(r?.used) ? r.used.map(Number).filter((n: number) => Number.isInteger(n) && n >= 0 && n < refs.length) : [],
+  }), { temperature: 0.5, maxTokens: 5000, timeoutMs: 150000 });
+  if (!out.text.trim()) throw new Error('生成失败，请重试');
+  const used: number[] = out.used.length ? out.used : refs.map((_, i) => i);
+  return { title: out.title, subject: keywords.subject, text: out.text, references: [...new Set(used)].map((i) => ({ title: refs[i].title, url: refs[i].url, site: refs[i].site })) };
 }
 
 export async function rewriteToLevel(text: string): Promise<string> {
@@ -177,8 +295,27 @@ export function extractText(html: string): { title: string; text: string } {
   return { title, text };
 }
 
-/** 读取网页，自动识别 Shift_JIS / EUC-JP（青空文库是 Shift_JIS）。 */
+/** 读取网页正文：有 DeepSeek Key 时用 DeepSeek Fetch（整理成 Markdown，适应各种网站），失败再自己解析。 */
 export async function fetchPage(url: string): Promise<{ title: string; text: string }> {
+  if ((await searchMode()) === 'deepseek') {
+    try {
+      const page = await deepseekFetch(url);
+      const text = page.text
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // 图片
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 链接只留文字
+        .replace(/^#+\s*/gm, '')
+        .replace(/[*_`>|]/g, '')
+        .split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+      if (text.length >= 20) return { title: page.title, text };
+    } catch {
+      // DeepSeek 读不了就自己解析 HTML
+    }
+  }
+  return fetchHtml(url);
+}
+
+/** 自己下载并解析网页，自动识别 Shift_JIS / EUC-JP（青空文库是 Shift_JIS）。 */
+async function fetchHtml(url: string): Promise<{ title: string; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
@@ -199,31 +336,6 @@ export async function fetchPage(url: string): Promise<{ title: string; text: str
   } finally {
     clearTimeout(timer);
   }
-}
-
-const WIKI = 'https://ja.wikipedia.org/w/api.php';
-
-export async function searchWikipedia(q: string): Promise<Array<{ title: string; snippet: string }>> {
-  const res = await fetch(`${WIKI}?action=query&list=search&format=json&srlimit=12&origin=*&srsearch=${encodeURIComponent(q)}`);
-  if (!res.ok) throw new Error(`维基百科返回错误 HTTP ${res.status}`);
-  const data = await res.json();
-  return (data?.query?.search ?? []).map((r: any) => ({
-    title: String(r.title),
-    snippet: decodeEntities(String(r.snippet ?? '').replace(/<[^>]+>/g, '')),
-  }));
-}
-
-export async function fetchWikipedia(title: string): Promise<{ title: string; text: string; url: string }> {
-  const res = await fetch(`${WIKI}?action=query&prop=extracts&explaintext=1&format=json&origin=*&titles=${encodeURIComponent(title)}`);
-  const data = await res.json();
-  const page = Object.values<any>(data?.query?.pages ?? {})[0];
-  // 维基百科条目很长，精读取开头几段就够了
-  const text = String(page?.extract ?? '')
-    .split('\n')
-    .filter((l) => l.trim() && !/^=+.*=+$/.test(l.trim()))
-    .join('\n')
-    .slice(0, 1500);
-  return { title, text, url: `https://ja.wikipedia.org/wiki/${encodeURIComponent(title)}` };
 }
 
 // ---------- 精读注释 ----------

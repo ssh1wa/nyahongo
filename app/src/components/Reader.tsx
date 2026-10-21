@@ -9,6 +9,7 @@ import { annotateArticle, countSentences, resetFailed, SOURCE_LABEL, updateArtic
 import { loadLlmSettings } from '../lib/settings';
 import { radius, useColors, useScale, useTheme } from '../theme';
 import { LookupSheet, type LookupWord } from './LookupSheet';
+import { References } from './References';
 import { RubyText } from './Ruby';
 import { Button, ErrorNote, IconButton, SectionLabel, Tag } from './Ui';
 
@@ -99,6 +100,7 @@ export function Reader({ id, initial, onBack }: { id: number; initial: Article; 
           <Button label="继续解析" onPress={() => run(article)} />
         ) : null}
         <Text style={{ color: c.muted, fontSize: 12, textAlign: 'center', marginTop: 6 }}>点任意一句：看译文、重点词和语法，或者追问 AI</Text>
+        {article.references?.length ? <References items={article.references} /> : null}
       </ScrollView>
 
       {sel && sel.segments ? (
