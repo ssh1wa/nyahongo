@@ -114,17 +114,21 @@ function renderLibrary() {
       <p>粘贴视频或播客链接，或者把本地文件拖进窗口。处理完成后就能逐句精听。</p>
       <div class="add-panel">
         <form class="add-row" id="add-form">
-          <input class="url-input" id="url" placeholder="粘贴 B 站 / YouTube / niconico 链接…" autocomplete="off">
+          <textarea class="url-input" id="url" rows="1" placeholder="粘贴 B 站 / YouTube / niconico 链接，一次可以粘贴多行…" autocomplete="off"></textarea>
           <button class="btn primary" type="submit">开始处理</button>
         </form>
         <div class="add-options">
-          <label class="switch"><input type="checkbox" id="audio-only"><span class="track"></span>只保留音频（播客）</label>
-          <span class="hint">也可以 <button class="link-btn" id="pick-file" type="button">选择本地文件</button> 或直接拖进窗口</span>
-          <input type="file" id="file-input" accept="video/*,audio/*,.mkv" hidden>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="audio-only"><span class="track"></span>只保留音频（播客）</label>
+            <label class="switch" title="B 站多 P、YouTube 播放列表等会拆成每集一个任务"><input type="checkbox" id="playlist"><span class="track"></span>展开整个合集</label>
+          </div>
+          <span class="hint">也可以 <button class="link-btn" id="pick-file" type="button">选择本地文件（可多选）</button> 或直接拖进窗口</span>
+          <input type="file" id="file-input" accept="video/*,audio/*,.mkv" multiple hidden>
         </div>
       </div>
     </section>
     <div id="jobs-wrap"></div>
+    <div id="dict-card"></div>
     <div class="section-title"><h2>学习库</h2><span id="lib-count"></span></div>
     <div id="library"></div>`;
 
@@ -132,28 +136,74 @@ function renderLibrary() {
   audioOnly.checked = store.get("audioOnly", false);
   audioOnly.addEventListener("change", () => store.set("audioOnly", audioOnly.checked));
 
+  const playlist = $("#playlist");
+  playlist.checked = store.get("playlist", false);
+  playlist.addEventListener("change", () => store.set("playlist", playlist.checked));
+
+  const urlBox = $("#url");
+  const autoGrow = () => { urlBox.style.height = "auto"; urlBox.style.height = `${Math.min(urlBox.scrollHeight, 180)}px`; };
+  urlBox.addEventListener("input", autoGrow);
+  // 回车提交，Shift+回车换行；粘贴多行链接不受影响
+  urlBox.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#add-form").requestSubmit(); }
+  });
+
   $("#add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const url = $("#url").value.trim();
-    if (!url) return $("#url").focus();
+    const sources = urlBox.value.split(/\s+/).filter((s) => /^https?:\/\//i.test(s));
+    if (!sources.length) { toast(urlBox.value.trim() ? "没找到 http 开头的链接" : "请先粘贴链接"); return urlBox.focus(); }
+    const btn = e.submitter;
+    if (btn) { btn.disabled = true; btn.textContent = playlist.checked ? "展开合集中…" : "提交中…"; }
     try {
-      await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: url, audio_only: audioOnly.checked }) });
-      $("#url").value = "";
-      toast("已加入处理队列");
+      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked }) });
+      urlBox.value = "";
+      autoGrow();
+      toast(r.failed.length ? `已加入 ${r.created} 个任务，${r.failed.length} 个合集展开失败，按单个链接处理` : `已加入 ${r.created} 个任务`);
       refreshJobs();
     } catch (err) { toast(err.message); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = "开始处理"; } }
   });
   $("#pick-file").addEventListener("click", () => $("#file-input").click());
   $("#file-input").addEventListener("change", (e) => {
-    const f = e.target.files[0];
-    if (f) uploadFile(f);
+    [...e.target.files].forEach(uploadFile);
     e.target.value = "";
   });
 
   loadLibrary();
   refreshJobs();
+  loadDictCard();
   const timer = setInterval(refreshJobs, 1000);
-  cleanup = () => clearInterval(timer);
+  const dictTimer = setInterval(() => { if (dictTranslating) loadDictCard(); }, 3000);
+  cleanup = () => { clearInterval(timer); clearInterval(dictTimer); };
+}
+
+// ---------- 手机离线词典 ----------
+let dictTranslating = false;
+
+async function loadDictCard() {
+  const box = $("#dict-card");
+  if (!box) return;
+  let d;
+  try { d = await api("/api/dictionary"); } catch { return; }
+  const t = d.translating || {};
+  dictTranslating = !!t.running;
+  const mb = (d.size / 1048576).toFixed(0);
+  const pct = Math.round((t.progress || 0) * 100);
+  box.innerHTML = `
+    <div class="dict-card">
+      <div class="dict-main">
+        <div class="dict-title">手机离线词典</div>
+        <div class="dict-meta">JMdict ${(d.entries / 10000).toFixed(1)} 万词条 · 中文释义 ${d.zh.toLocaleString()} 条 · ${mb} MB · 手机在「设置」里下载</div>
+        ${t.running ? `<div class="progress"><div style="width:${pct}%"></div></div>` : ""}
+        ${t.message && !t.running ? `<div class="dict-meta">${esc(t.message)}</div>` : ""}
+      </div>
+      <button class="btn small" id="dict-translate" ${t.running ? "disabled" : ""}>${t.running ? `翻译中 ${pct}%` : "预翻译常用词"}</button>
+    </div>`;
+  $("#dict-translate")?.addEventListener("click", async () => {
+    if (!confirm("让 AI 把约 2.2 万个常用词条的英文释义翻译成中文。\n\n会花费一些 API 额度，用时约十几分钟，翻过的不会重复翻。要开始吗？")) return;
+    try { await api("/api/dictionary/translate-common", { method: "POST" }); dictTranslating = true; loadDictCard(); }
+    catch (err) { toast(err.message); }
+  });
 }
 
 async function loadLibrary() {
@@ -252,7 +302,9 @@ function stepperHtml(job) {
 function jobHtml(j) {
   const title = `<div class="job-title" title="${esc(j.source)}">${esc(j.display)}</div>`;
   if (j.status === "queued") {
-    return `<div class="job">${title}<div class="job-actions"></div><div class="job-detail">排队中，等前面的任务处理完</div></div>`;
+    return `<div class="job">${title}
+      <div class="job-actions"><button class="btn small ghost" data-dismiss="${j.id}" title="取消这个任务">${ICONS.close}</button></div>
+      <div class="job-detail">排队中，等前面的任务处理完</div></div>`;
   }
   if (j.status === "running") {
     const p = j.stage_progress;
@@ -279,28 +331,41 @@ function jobHtml(j) {
 }
 
 function uploadHtml(u) {
+  const pct = Math.round(u.progress * 100);
   return `<div class="job"><div class="job-title">${esc(u.name)}</div><div class="job-actions"></div>
-    <div class="job-detail">导入文件 ${Math.round(u.progress * 100)}%</div>
-    <div class="progress"><div style="width:${Math.round(u.progress * 100)}%"></div></div></div>`;
+    <div class="job-detail">${u.started ? `导入文件 ${pct}%` : "等待导入…"}</div>
+    <div class="progress"><div style="width:${pct}%"></div></div></div>`;
 }
 
+// 多个文件逐个上传：同时传会互相抢带宽，而且后面的处理本来就要排队
+let uploading = false;
+let uploadSeq = 0;
+
 function uploadFile(file) {
-  const audioOnly = store.get("audioOnly", false);
-  const key = `${file.name}-${Date.now()}`;
-  uploads.set(key, { name: file.name, progress: 0 });
+  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false) });
   refreshJobs();
+  pumpUploads();
+}
+
+function pumpUploads() {
+  if (uploading) return;
+  const next = [...uploads.entries()].find(([, u]) => !u.started);
+  if (!next) return;
+  const [key, u] = next;
+  uploading = true;
+  u.started = true;
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(file.name)}&audio_only=${audioOnly}`);
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable && uploads.has(key)) uploads.get(key).progress = e.loaded / e.total;
-  };
+  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}`);
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) u.progress = e.loaded / e.total; };
   xhr.onloadend = () => {
     uploads.delete(key);
-    if (xhr.status === 200) toast("文件已导入，开始处理");
-    else toast(`导入失败：${xhr.statusText || xhr.status}`);
+    uploading = false;
+    if (xhr.status !== 200) toast(`「${u.name}」导入失败：${xhr.statusText || xhr.status}`);
+    else if (![...uploads.values()].length) toast("文件都已导入，正在排队处理");
     refreshJobs();
+    pumpUploads();
   };
-  xhr.send(file);
+  xhr.send(u.file);
 }
 
 // 整个窗口都可以拖入文件

@@ -10,7 +10,7 @@ import { WordSheet } from '../components/WordSheet';
 import { kvGet, kvSet } from '../lib/db';
 import { loadPackage, mediaUri, saveProgress } from '../lib/packages';
 import type { PackageData, Sentence } from '../lib/types';
-import { radius, useColors } from '../theme';
+import { radius, useColors, useTheme } from '../theme';
 
 type ZhMode = 'show' | 'tap' | 'hidden';
 const RATES = [0.75, 0.9, 1, 1.25];
@@ -51,6 +51,7 @@ export function PlayerScreen({ id, onClose }: { id: string; onClose: () => void 
 
 function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const c = useColors();
+  const { prefs } = useTheme();
   const insets = useSafeAreaInsets();
   const { meta, sentences, dictionary } = data;
   const isVideo = meta.media_type === 'video';
@@ -76,7 +77,8 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   st.current.autoPause = autoPause;
 
   useEffect(() => {
-    Promise.all([kvGet('player.loop', false), kvGet('player.autoPause', false), kvGet('player.rate', 1), kvGet('player.ruby', true), kvGet<ZhMode>('player.zh', 'tap')])
+    // 播放器里改过的开关会记住；没改过就用设置里的默认值
+    Promise.all([kvGet('player.loop', false), kvGet('player.autoPause', false), kvGet('player.rate', 1), kvGet('player.ruby', prefs.showRuby), kvGet<ZhMode>('player.zh', prefs.zhMode)])
       .then(([l, a, r, ruby, zh]) => { setLoop(l); setAutoPause(a); setRate(r); setShowRuby(ruby); setZhMode(zh); player.playbackRate = r; });
   }, [player]);
 

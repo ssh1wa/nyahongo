@@ -27,6 +27,8 @@ from pydantic import BaseModel
 from .config import load_config
 from .dictionary import ATTRIBUTION
 from .package import make_thumbnail
+from . import phone_dict
+from .download import expand_playlist, is_url
 from .pipeline import STAGES, Options, PackageExists, run
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -34,7 +36,9 @@ _ID = re.compile(r"^[\w\-]+$")
 _FILE = re.compile(r"^(media\.\w+|subtitles\.json|dictionary\.json|meta\.json|thumb\.jpg)$")
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 # 其他设备能访问的路径（只读）
-REMOTE_ALLOWED = re.compile(r"^/api/(ping|library(/[\w\-]+(/(files(/[\w.\-]+)?|thumb|media))?)?)$")
+REMOTE_ALLOWED = re.compile(
+    r"^/api/(ping|dictionary(/file)?|library(/[\w\-]+(/(files(/[\w.\-]+)?|thumb|media))?)?)$"
+)
 
 app = FastAPI(title="日语学习包")
 _lan = {"enabled": False, "port": 8765}
@@ -183,7 +187,9 @@ _queue: queue.Queue[str] = queue.Queue()
 
 def _worker() -> None:
     while True:
-        job = _jobs[_queue.get()]
+        job = _jobs.get(_queue.get())
+        if job is None:  # 排队时被取消了
+            continue
         job.status = "running"
 
         def progress(stage: int, fraction: float | None, detail: str) -> None:
@@ -228,6 +234,80 @@ def create_job(req: JobRequest) -> dict:
                        audio_only=req.audio_only, overwrite=req.overwrite, title=req.title))
 
 
+# ---------- 手机离线词典 ----------
+
+_dict_lock = threading.Lock()
+_dict_job = {"running": False, "progress": 0.0, "message": ""}
+
+
+@app.get("/api/dictionary")
+def dictionary_info() -> dict:
+    """离线词典信息。电脑上有新翻译的词条时会先重新打包（几秒钟）。"""
+    with _dict_lock:
+        phone_dict.ensure_fresh()
+    return {**phone_dict.info(), "translating": _dict_job}
+
+
+@app.get("/api/dictionary/file")
+def dictionary_file() -> FileResponse:
+    with _dict_lock:
+        path = phone_dict.ensure_fresh()
+    return FileResponse(path, media_type="application/vnd.sqlite3", filename="jmdict-phone.sqlite")
+
+
+@app.post("/api/dictionary/translate-common")
+def translate_common() -> dict:
+    """后台预翻译约 2.2 万个常用词条的中文释义（会花 API 费用，只在用户点按钮时运行）。"""
+    cfg = load_config()
+    if not (cfg.llm.key() and cfg.llm.model):
+        raise HTTPException(400, "没有配置 AI 接口（config.toml 的 [llm]）")
+    if _dict_job["running"]:
+        return _dict_job
+
+    def work() -> None:
+        _dict_job.update(running=True, progress=0.0, message="翻译中")
+        try:
+            n = phone_dict.translate_common(cfg.llm, lambda f: _dict_job.update(progress=f))
+            _dict_job.update(message=f"完成：新翻译了 {n} 个词条")
+        except Exception as e:  # noqa: BLE001 — 结果显示在网页上
+            _dict_job.update(message=f"出错了：{e}")
+        finally:
+            _dict_job["running"] = False
+
+    threading.Thread(target=work, daemon=True).start()
+    return _dict_job
+
+
+class BatchRequest(BaseModel):
+    sources: list[str]
+    audio_only: bool = False
+    playlist: bool = False  # 把合集/播放列表/多分 P 展开成单集
+
+
+@app.post("/api/jobs/batch")
+def create_jobs(req: BatchRequest) -> dict:
+    """一次提交多个链接（每行一个），可选展开合集。返回新建的任务数和展开失败的链接。"""
+    cfg = load_config()
+    seen: set[str] = set()
+    created, failed = [], []
+    for raw in req.sources:
+        source = raw.strip().strip('"')
+        if not source or source in seen:
+            continue
+        seen.add(source)
+        items = [(source, source)]
+        if req.playlist and is_url(source):
+            try:
+                _, items = expand_playlist(source, cfg)
+            except Exception as e:  # noqa: BLE001 — 展开失败就当单个链接处理，并告诉用户
+                failed.append(f"{source}：{e}")
+        for url, display in items:
+            created.append(_submit(Job(id=uuid.uuid4().hex[:8], source=url, display=display, audio_only=req.audio_only)))
+    if not created:
+        raise HTTPException(400, "没有可处理的链接")
+    return {"created": len(created), "failed": failed}
+
+
 @app.post("/api/upload")
 async def upload(request: Request, filename: str, audio_only: bool = False) -> dict:
     """浏览器拿不到本地文件路径，所以把文件流式传到 workspace/uploads 再处理。"""
@@ -254,9 +334,10 @@ def list_jobs() -> dict:
 
 @app.delete("/api/jobs/{job_id}")
 def dismiss_job(job_id: str) -> dict:
+    """移除已完成/出错的任务，或者取消还在排队的任务（正在处理的不能取消）。"""
     with _lock:
         job = _jobs.get(job_id)
-        if job and job.status in ("done", "error"):
+        if job and job.status in ("done", "error", "queued"):
             del _jobs[job_id]
     return {"ok": True}
 

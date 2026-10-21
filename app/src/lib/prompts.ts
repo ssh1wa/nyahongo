@@ -90,9 +90,10 @@ export type PracticeQuestion = {
   answerNote: string;
 };
 
-export const practiceQuestionPrompt = (direction: PracticeDirection, level: string, avoid: string[], focusWords: string[]) => `You create one fresh translation exercise for a ${level} Japanese learner.
+export const practiceQuestionPrompt = (direction: PracticeDirection, level: string, avoid: string[], focusWords: string[], focusGrammar: string[] = []) => `You create one fresh translation exercise for a ${level} Japanese learner.
 Direction: ${direction === 'zh-ja' ? 'Simplified Chinese to Japanese' : 'Japanese to Simplified Chinese'}.
 Use an everyday situation and test exactly one useful grammar point. Avoid ambiguous literary sentences.
+${focusGrammar.length ? `Prefer testing one of these grammar points the learner recently studied or got wrong (pick one, vary across exercises): ${focusGrammar.join(' / ')}` : ''}
 ${avoid.length ? `Do not reuse or trivially paraphrase these recent sentences: ${avoid.join(' || ')}` : ''}
 ${focusWords.length ? `If natural, use one of these words the learner is currently reviewing: ${focusWords.join(' / ')}` : ''}
 ${RUBY_RULES}

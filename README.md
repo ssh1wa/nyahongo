@@ -37,3 +37,4 @@ thumb.jpg               封面
 - 词典：[JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) © Electronic Dictionary Research and Development Group，CC BY-SA 4.0；JSON 版本来自 [jmdict-simplified](https://github.com/scriptin/jmdict-simplified)
 - 中文释义：由 AI 翻译 JMdict 的英文义项，词条本身（写法、读音、词性、义项划分）全部来自 JMdict
 - 复习算法：FSRS（[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)）
+- 语法点：[Hanabira](https://hanabira.org) 开源日语语法库（`app/src/data/grammar.json`，去掉了罗马音），署名后可免费使用；课程编排、中文讲解和练习题由 AI 基于这些资料生成

@@ -2,7 +2,7 @@
   "expo": {
     "name": "ことば精听",
     "slug": "kotoba-seichou",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "com.nihongostudy.seichou",
-      "versionCode": 1,
+      "versionCode": 2,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#C8553D",
@@ -20,12 +20,32 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": []
+      "permissions": ["android.permission.CAMERA"]
     },
     "plugins": [
       "expo-video",
       "expo-sqlite",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "选择书页、漫画或截图，让 AI 识别其中的日文。",
+          "cameraPermission": "拍摄书页或漫画，让 AI 识别其中的日文。",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120,
+          "backgroundColor": "#F5F1E8",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#161412"
+          }
+        }
+      ],
       [
         "expo-build-properties",
         {

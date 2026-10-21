@@ -1,32 +1,32 @@
 // 生词本 + FSRS 复习。复习卡片带原句，学习包还在手机上时可以回放原声。
 import { useVideoPlayer } from 'expo-video';
-import { Trash2, Volume2 } from 'lucide-react-native';
+import { BookMarked, Trash2, Volume2 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, SectionLabel, Title } from '../components/Ui';
+import { Button, Card, EmptyState, ScreenHeader, SectionLabel, Title } from '../components/Ui';
 import { EntryView } from '../components/WordSheet';
 import { listLocal, mediaUri } from '../lib/packages';
 import type { PackageMeta } from '../lib/types';
-import { deleteWord, dueWords, GRADES, listWords, previewIntervals, review, type WordRow } from '../lib/wordbook';
+import { deleteWord, dueWords, GRADES, listWords, previewIntervals, review, stats, type WordRow } from '../lib/wordbook';
 import { radius, useColors } from '../theme';
 
-export function WordbookScreen({ startReview, onReviewStarted }: { startReview?: boolean; onReviewStarted?: () => void }) {
+export function WordbookScreen({ active }: { active: boolean }) {
   const c = useColors();
   const [words, setWords] = useState<WordRow[]>([]);
   const [queue, setQueue] = useState<WordRow[] | null>(null);
   const [packages, setPackages] = useState<Record<string, PackageMeta>>({});
+  const [st, setSt] = useState({ total: 0, due: 0, reviewedToday: 0, streak: 0 });
 
   const refresh = useCallback(async () => {
-    const [w, local] = await Promise.all([listWords(), listLocal()]);
+    const [w, local, s] = await Promise.all([listWords(), listLocal(), stats()]);
     setWords(w);
     setPackages(Object.fromEntries(local.map((p) => [p.id, p])));
+    setSt(s);
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  // 每次切到生词本都刷新：别的页面可能刚加了词
+  useEffect(() => { if (active) void refresh(); }, [active, refresh]);
 
   const begin = useCallback(async () => setQueue(await dueWords(100)), []);
-  useEffect(() => {
-    if (startReview) { void begin(); onReviewStarted?.(); }
-  }, [startReview, begin, onReviewStarted]);
 
   if (queue) {
     return (
@@ -39,7 +39,7 @@ export function WordbookScreen({ startReview, onReviewStarted }: { startReview?:
   }
 
   const now = Date.now();
-  const due = words.filter((w) => w.due <= now).length;
+  const due = st.due;
   return (
     <FlatList
       data={words}
@@ -47,15 +47,22 @@ export function WordbookScreen({ startReview, onReviewStarted }: { startReview?:
       contentContainerStyle={styles.content}
       ListHeaderComponent={
         <View style={{ gap: 14, marginBottom: 6 }}>
-          <Title kicker="词条来自 JMdict 词典" title="生词本" />
-          <Card style={{ gap: 10 }}>
-            <Text style={{ color: c.ink, fontSize: 15 }}>
-              共 {words.length} 个词，<Text style={{ color: c.accent, fontWeight: '800' }}>{due}</Text> 个到期需要复习
-            </Text>
-            <Button label={due ? `开始复习（${due}）` : '今天没有要复习的词'} disabled={!due} onPress={begin} />
+          <ScreenHeader kicker="间隔复习 · FSRS" title="生词本" />
+          <Card style={{ gap: 14 }}>
+            <View style={styles.stats}>
+              <Stat value={due} label="待复习" highlight />
+              <Stat value={st.reviewedToday} label="今天已复习" />
+              <Stat value={st.streak} label="连续天数" />
+              <Stat value={st.total} label="总词数" />
+            </View>
+            <Button label={due ? `开始复习（${due}）` : '今天的复习都完成了'} disabled={!due} onPress={begin} />
           </Card>
           {words.length ? <SectionLabel>全部生词</SectionLabel> : (
-            <Text style={{ color: c.muted, lineHeight: 21 }}>在播放器里点任意一个词，选「加入生词本」，就会出现在这里，并带上那句原文和原声。</Text>
+            <EmptyState
+              icon={<BookMarked size={26} color={c.accent} />}
+              title="生词本还是空的"
+              text="在精听、阅读、翻译里点开一个词，选「加入生词本」。词条来自 JMdict 词典，会带上你遇到它的那句原文。"
+            />
           )}
         </View>
       }
@@ -164,6 +171,16 @@ function Review({ queue, packages, onDone }: { queue: WordRow[]; packages: Recor
   );
 }
 
+function Stat({ value, label, highlight }: { value: number; label: string; highlight?: boolean }) {
+  const c = useColors();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
+      <Text style={{ color: highlight && value ? c.accent : c.ink, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] }}>{value}</Text>
+      <Text style={{ color: c.muted, fontSize: 11.5 }}>{label}</Text>
+    </View>
+  );
+}
+
 /** 回放生词所在那一句的原声。 */
 function ClipButton({ meta, start, end }: { meta: PackageMeta; start: number; end: number }) {
   const c = useColors();
@@ -187,6 +204,7 @@ function ClipButton({ meta, start, end }: { meta: PackageMeta; start: number; en
 
 const styles = StyleSheet.create({
   content: { padding: 18, gap: 10, paddingBottom: 40 },
+  stats: { flexDirection: 'row' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   grades: { flexDirection: 'row', gap: 8, marginTop: 12 },
   grade: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, gap: 2 },

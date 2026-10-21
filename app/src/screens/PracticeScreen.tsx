@@ -12,13 +12,17 @@ import {
 } from '../lib/prompts';
 import { addRecord, listRecords, updateRecord } from '../lib/records';
 import { loadLlmSettings } from '../lib/settings';
+import { recentGrammar } from '../lib/grammar';
 import { dueWords } from '../lib/wordbook';
+import { useNav } from '../nav';
 import { radius, useColors } from '../theme';
 
 type Saved = { question: PracticeQuestion; answer: string; grade: PracticeGrade | null; revealed: boolean; followUps: FollowUp[] };
 
-export function PracticeScreen({ onNeedSettings }: { onNeedSettings: () => void }) {
+export function PracticeScreen({ embedded }: { embedded?: boolean }) {
   const c = useColors();
+  const nav = useNav();
+  const onNeedSettings = nav.openSettings;
   const [direction, setDirection] = useState<PracticeDirection>('zh-ja');
   const [question, setQuestion] = useState<PracticeQuestion | null>(null);
   const [answer, setAnswer] = useState('');
@@ -38,16 +42,16 @@ export function PracticeScreen({ onNeedSettings }: { onNeedSettings: () => void 
     setLoading('question');
     setError('');
     try {
-      const [recent, due] = await Promise.all([listRecords<Saved>('practice', 30), dueWords(20)]);
+      const [recent, due, grammar] = await Promise.all([listRecords<Saved>('practice', 30), dueWords(20), recentGrammar(8)]);
       const avoid = recent.map((r) => r.data.question.sourceText).filter(Boolean);
       const focusWords = due.map((w) => w.headword).slice(0, 8);
       let q = await requestJson(settings, [
-        { role: 'system', content: practiceQuestionPrompt(direction, settings.level, avoid, focusWords) },
+        { role: 'system', content: practiceQuestionPrompt(direction, settings.level, avoid, focusWords, grammar) },
         { role: 'user', content: 'Create one new exercise now. Return JSON.' },
       ], (raw) => shapeQuestion(raw, direction), { temperature: 0.85 });
       if (avoid.includes(q.sourceText)) {
         q = await requestJson(settings, [
-          { role: 'system', content: practiceQuestionPrompt(direction, settings.level, avoid, focusWords) },
+          { role: 'system', content: practiceQuestionPrompt(direction, settings.level, avoid, focusWords, grammar) },
           { role: 'user', content: `The first draft repeated a recent sentence: ${q.sourceText}. Create a genuinely different exercise now. Return JSON.` },
         ], (raw) => shapeQuestion(raw, direction), { temperature: 0.9 });
       }
@@ -130,7 +134,7 @@ export function PracticeScreen({ onNeedSettings }: { onNeedSettings: () => void 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="height">
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Title kicker="一句一练" title="先自己想，再看答案" />
+        {embedded ? null : <Title kicker="一句一练" title="先自己想，再看答案" />}
         <Segmented
           options={[{ value: 'zh-ja', label: '中 → 日' }, { value: 'ja-zh', label: '日 → 中' }]}
           value={direction}
@@ -140,7 +144,7 @@ export function PracticeScreen({ onNeedSettings }: { onNeedSettings: () => void 
         {!question ? (
           <Card style={{ gap: 12, alignItems: 'center', paddingVertical: 28 }}>
             <Target size={30} color={c.accent} />
-            <Text style={{ color: c.ink2, textAlign: 'center', lineHeight: 21 }}>每题聚焦一个日常语法点。生词本里正在复习的词会优先出现在题目里。</Text>
+            <Text style={{ color: c.ink2, textAlign: 'center', lineHeight: 21 }}>每题聚焦一个语法点。刚学过或测验没过的语法、生词本里正在复习的词，会优先出现在题目里。</Text>
             <Button label="出一道题" onPress={newQuestion} loading={loading === 'question'} icon={<RefreshCw size={17} color={c.accentInk} />} style={{ alignSelf: 'stretch' }} />
           </Card>
         ) : (

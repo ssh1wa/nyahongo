@@ -43,6 +43,15 @@ const MIGRATIONS = [
      created_at INTEGER NOT NULL
    );
    CREATE INDEX IF NOT EXISTS records_kind ON records(kind, created_at);`,
+  // v2：语法课程进度。lesson 是 AI 生成的中文讲解（缓存），status: new / learned / review
+  `CREATE TABLE IF NOT EXISTS grammar (
+     id TEXT PRIMARY KEY,
+     status TEXT NOT NULL DEFAULT 'new',
+     lesson TEXT,
+     quiz_correct INTEGER,
+     quiz_total INTEGER,
+     updated_at INTEGER NOT NULL
+   );`,
 ];
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {

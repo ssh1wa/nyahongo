@@ -37,35 +37,75 @@ export async function isSaved(entryId: number | undefined | null): Promise<boole
   return !!(await db.getFirstAsync('SELECT 1 FROM words WHERE entry_id = ?', entryId));
 }
 
-/** 从学习包的一个词加入生词本，带上原句和原声片段位置。已存在则返回 false。 */
-export async function addFromToken(
-  token: Token,
-  entry: DictEntry | null,
-  sentence: Sentence,
-  packageId: string,
-): Promise<boolean> {
+export type NewWord = {
+  entry: DictEntry | null;
+  headword: string;
+  reading: string | null;
+  context?: string | null; // 遇到这个词的原句
+  contextZh?: string | null;
+  packageId?: string | null; // 来自视频学习包时，复习可以回放原声
+  clipStart?: number | null;
+  clipEnd?: number | null;
+};
+
+/** 加入生词本。同一个 JMdict 词条只收一次，已存在则返回 false。 */
+export async function addWord(w: NewWord): Promise<boolean> {
   const db = await getDb();
-  if (entry && (await isSaved(entry.id))) return false;
+  if (w.entry && (await isSaved(w.entry.id))) return false;
+  if (!w.entry && (await db.getFirstAsync('SELECT 1 FROM words WHERE entry_id IS NULL AND headword = ?', w.headword))) return false;
   const card = createEmptyCard(new Date());
-  const headword = entry ? entry.kanji[0] || entry.readings[0] : token.base;
-  const reading = entry ? entry.readings[0] ?? null : token.reading;
   await db.runAsync(
     `INSERT INTO words (entry_id, headword, reading, entry, context, context_zh, package_id, clip_start, clip_end, card, due, added_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    entry?.id ?? null,
-    headword,
-    reading,
-    entry ? JSON.stringify(entry) : null,
-    sentence.text,
-    sentence.zh ?? null,
-    packageId,
-    sentence.start,
-    sentence.end,
+    w.entry?.id ?? null,
+    w.headword,
+    w.reading,
+    w.entry ? JSON.stringify(w.entry) : null,
+    w.context ?? null,
+    w.contextZh ?? null,
+    w.packageId ?? null,
+    w.clipStart ?? null,
+    w.clipEnd ?? null,
     JSON.stringify(card),
     card.due.getTime(),
     Date.now(),
   );
   return true;
+}
+
+/** 从学习包的一个词加入生词本，带上原句和原声片段位置。 */
+export function addFromToken(token: Token, entry: DictEntry | null, sentence: Sentence, packageId: string): Promise<boolean> {
+  return addWord({
+    entry,
+    headword: entry ? entry.kanji[0] || entry.readings[0] : token.base,
+    reading: entry ? entry.readings[0] ?? null : token.reading,
+    context: sentence.text,
+    contextZh: sentence.zh,
+    packageId,
+    clipStart: sentence.start,
+    clipEnd: sentence.end,
+  });
+}
+
+/** 生词本统计：总数、到期数、今天复习过的数量、连续学习天数。 */
+export async function stats(): Promise<{ total: number; due: number; reviewedToday: number; streak: number }> {
+  const db = await getDb();
+  const now = Date.now();
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const [t, d, r, days] = await Promise.all([
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words'),
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE due <= ?', now),
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM review_log WHERE reviewed_at >= ?', start.getTime()),
+    db.getAllAsync<{ d: string }>("SELECT DISTINCT date(reviewed_at / 1000, 'unixepoch', 'localtime') AS d FROM review_log ORDER BY d DESC LIMIT 400"),
+  ]);
+  // 连续天数：从今天（或昨天）往前数
+  const set = new Set(days.map((x) => x.d));
+  const day = new Date();
+  const key = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  if (!set.has(key(day))) day.setDate(day.getDate() - 1);
+  let streak = 0;
+  while (set.has(key(day))) { streak++; day.setDate(day.getDate() - 1); }
+  return { total: t?.n ?? 0, due: d?.n ?? 0, reviewedToday: r?.n ?? 0, streak };
 }
 
 export async function listWords(): Promise<WordRow[]> {

@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FollowUpPanel } from '../components/FollowUpPanel';
 import { RubyText } from '../components/Ruby';
-import { Button, Card, ErrorNote, SectionLabel, Title } from '../components/Ui';
+import { LookupSheet, type LookupWord } from '../components/LookupSheet';
+import { Button, Card, ErrorNote, ScreenHeader, SectionLabel } from '../components/Ui';
+import { useNav } from '../nav';
 import { requestJson } from '../lib/llm';
 import { followUpPrompt, shapeFollowUp, shapeTranslation, TRANSLATION_PROMPT, type FollowUp, type TranslationResult } from '../lib/prompts';
 import { addRecord, listRecords, updateRecord, type RecordRow } from '../lib/records';
@@ -13,8 +15,11 @@ import { radius, useColors } from '../theme';
 
 type Saved = { query: string; result: TranslationResult; followUps: FollowUp[] };
 
-export function TranslateScreen({ onNeedSettings }: { onNeedSettings: () => void }) {
+export function TranslateScreen() {
   const c = useColors();
+  const nav = useNav();
+  const onNeedSettings = nav.openSettings;
+  const [lookup, setLookup] = useState<LookupWord | null>(null);
   const [input, setInput] = useState('');
   // 已提交的查询：追问和记录都用它，不用输入框里可能已经改过的内容（旧 App 的 bug）
   const [current, setCurrent] = useState<Saved | null>(null);
@@ -84,7 +89,7 @@ export function TranslateScreen({ onNeedSettings }: { onNeedSettings: () => void
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="height">
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Title kicker="中文 ⇄ 日本語" title="翻译与拆解" />
+        <ScreenHeader kicker="中文 ⇄ 日本語" title="翻译" />
         <Card style={{ gap: 12 }}>
           <TextInput
             value={input}
@@ -110,9 +115,13 @@ export function TranslateScreen({ onNeedSettings }: { onNeedSettings: () => void
 
             {r.words.length ? (
               <View style={{ gap: 6 }}>
-                <SectionLabel>词汇</SectionLabel>
+                <SectionLabel>词汇（点开查词典）</SectionLabel>
                 {r.words.map((w, i) => (
-                  <View key={i} style={[styles.word, { borderColor: c.line }]}>
+                  <Pressable
+                    key={i}
+                    onPress={() => setLookup({ surface: w.surface, base: w.surface, reading: w.reading, meaning: w.meaning })}
+                    style={({ pressed }) => [styles.word, { borderColor: c.line, opacity: pressed ? 0.6 : 1 }]}
+                  >
                     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                       <Text style={{ color: c.ink, fontSize: 16, fontWeight: '700' }}>{w.surface}</Text>
                       {w.reading ? <Text style={{ color: c.ruby, fontSize: 12 }}>{w.reading}</Text> : null}
@@ -121,7 +130,7 @@ export function TranslateScreen({ onNeedSettings }: { onNeedSettings: () => void
                       <Text style={{ color: c.ink2, fontSize: 13, textAlign: 'right' }}>{w.meaning}</Text>
                       <Text style={{ color: c.muted, fontSize: 11 }}>{w.partOfSpeech}</Text>
                     </View>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             ) : null}
@@ -163,6 +172,14 @@ export function TranslateScreen({ onNeedSettings }: { onNeedSettings: () => void
           </View>
         )}
       </ScrollView>
+      {lookup && current ? (
+        <LookupSheet
+          word={lookup}
+          context={current.result.direction === 'ja-zh' ? current.query : current.result.translationJapanese.map((s) => s.text).join('')}
+          contextZh={current.result.direction === 'ja-zh' ? current.result.translationChinese : current.query}
+          onClose={() => setLookup(null)}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

@@ -2,7 +2,8 @@
 import { Download, Film, Headphones, Laptop, RefreshCw, Trash2 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, ErrorNote, SectionLabel, Tag, Title } from '../components/Ui';
+import { Button, Card, EmptyState, ErrorNote, ScreenHeader, SectionLabel, Tag } from '../components/Ui';
+import { useNav } from '../nav';
 import {
   deleteLocal, downloadPackage, getPcUrl, listLocal, listRemote, thumbUri,
   type DownloadHandle, type LocalPackage,
@@ -13,10 +14,12 @@ import { radius, useColors } from '../theme';
 
 const fmtDuration = (sec: number) => (sec < 60 ? `${Math.max(1, Math.round(sec))} 秒` : `${Math.round(sec / 60)} 分钟`);
 
-export function LibraryScreen({ onOpen, onGoSettings, onGoReview }: {
-  onOpen: (id: string) => void; onGoSettings: () => void; onGoReview: () => void;
-}) {
+export function LibraryScreen({ active }: { active: boolean }) {
   const c = useColors();
+  const nav = useNav();
+  const onOpen = nav.openPlayer;
+  const onGoSettings = nav.openSettings;
+  const onGoReview = () => nav.goTab('words');
   const [local, setLocal] = useState<LocalPackage[]>([]);
   const [remote, setRemote] = useState<PackageMeta[] | null>(null);
   const [pcUrl, setPcUrl] = useState('');
@@ -47,7 +50,8 @@ export function LibraryScreen({ onOpen, onGoSettings, onGoReview }: {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  // 每次切到这个标签都刷新（可能刚从播放器回来，进度变了）
+  useEffect(() => { if (active) void refresh(); }, [active, refresh]);
   useEffect(() => () => Object.values(handles.current).forEach((h) => h.cancel()), []);
 
   const download = (meta: PackageMeta) => {
@@ -82,7 +86,7 @@ export function LibraryScreen({ onOpen, onGoSettings, onGoReview }: {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} colors={[c.accent]} />}
     >
-      <Title kicker="ことば精听" title="学习库" />
+      <ScreenHeader kicker="视频 · 播客" title="精听" />
 
       {due > 0 ? (
         <Pressable onPress={onGoReview}>
@@ -117,7 +121,7 @@ export function LibraryScreen({ onOpen, onGoSettings, onGoReview }: {
           </Pressable>
         );
       }) : (
-        <Card><Text style={{ color: c.muted, lineHeight: 21 }}>还没有学习包。先在电脑上处理视频，再从下面的「电脑上的学习包」下载到手机。</Text></Card>
+        <EmptyState icon={<Headphones size={26} color={c.accent} />} title="还没有学习包" text="在电脑上处理视频或播客，再从下面的「电脑上的学习包」下载到手机，就能逐句精听。" />
       )}
 
       <View style={styles.remoteHead}>

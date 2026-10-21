@@ -124,7 +124,25 @@ def download(
     )
 
 
-_VTT_TIME = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})\.(\d{3})")
+def expand_playlist(url: str, cfg: Config, limit: int = 200) -> tuple[str, list[tuple[str, str]]]:
+    """展开合集/播放列表/B 站多分 P，返回 (合集标题, [(单集链接, 显示名)])。不是合集时只有它自己。"""
+    opts: dict = {"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "skip_download": True}
+    if cfg.download.proxy and _needs_proxy(url, cfg):
+        opts["proxy"] = cfg.download.proxy
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    title = info.get("title") or url
+    if info.get("_type") != "playlist":
+        return title, [(url, title)]
+    items = []
+    for i, e in enumerate(list(info.get("entries") or [])[:limit], 1):
+        link = e.get("url") or e.get("webpage_url")
+        if link:
+            items.append((link, e.get("title") or f"{title} 第 {i} 集"))
+    return title, items
+
+
+_VTT_TIME =re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})\.(\d{3})")
 _VTT_TAG = re.compile(r"<[^>]+>")
 
 
