@@ -1,0 +1,21 @@
+# 复制为 config.toml 后按需修改。config.toml 不会被提交到 git。
+
+[paths]
+workspace = "workspace"   # 下载的原始文件
+library = "library"       # 生成的学习包，手机从这里同步
+
+[ffmpeg]
+path = ""                 # 留空自动查找
+
+[download]
+proxy = ""                # 例如 "http://127.0.0.1:7890"，只用于下面列出的网站
+proxy_domains = ["youtube.com", "youtu.be", "nicovideo.jp"]
+cookies_from_browser = "" # 需要登录的内容才填，例如 "edge"、"chrome"
+max_height = 720
+
+[whisper]
+model = "large-v3"        # 也可以用 "kotoba-tech/kotoba-whisper-v2.0-faster"
+device = "auto"           # auto / cuda / cpu
+compute_type = "auto"
+beam_size = 5
+initial_prompt = ""       # 可填角色名、专有名词，提高识别准确率

@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 本地配置（含 API Key、代理）不提交
+pc/config.toml
+
+# 下载的媒体和生成的学习包
+pc/workspace/
+pc/library/
