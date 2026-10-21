@@ -4,6 +4,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useNav } from '../nav';
 import { radius, useColors } from '../theme';
+import { Companion } from './Companion';
 
 export function Button({ label, onPress, kind = 'primary', loading, disabled, icon, style, small }: {
   label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -91,6 +92,7 @@ export function ScreenHeader({ kicker, title, right }: { kicker?: string; title:
     <View style={styles.header}>
       <View style={{ flex: 1 }}><Title kicker={kicker} title={title} /></View>
       {right}
+      <Companion />
       <Pressable onPress={nav.openSettings} hitSlop={8} style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}>
         <Settings2 size={22} color={c.ink2} />
       </Pressable>

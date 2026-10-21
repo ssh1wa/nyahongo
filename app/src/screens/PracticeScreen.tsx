@@ -1,6 +1,7 @@
 // 一句一练（迁移自「ことば日和」）：出题会避开最近做过的句子，并优先用生词本里正在复习的词
 import { Eye, Lightbulb, RefreshCw, Send, Target } from 'lucide-react-native';
 import React, { useState } from 'react';
+import { award } from '../lib/game';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FollowUpPanel } from '../components/FollowUpPanel';
 import { RubyText } from '../components/Ruby';
@@ -81,6 +82,7 @@ export function PracticeScreen({ embedded }: { embedded?: boolean }) {
         { role: 'user', content: JSON.stringify({ question, learnerAnswer: answer.trim() }) },
       ], shapeGrade, { temperature: 0.2 });
       setGrade(g);
+      award('practice');
       setRecordId(await addRecord<Saved>('practice', question.sourceText, { question, answer: answer.trim(), grade: g, revealed: false, followUps: [] }));
     } catch (e) {
       setError(e instanceof Error ? e.message : '评分失败，请重试');
@@ -111,6 +113,7 @@ export function PracticeScreen({ embedded }: { embedded?: boolean }) {
           }),
         },
       ], (raw) => shapeFollowUp(raw, q), { temperature: 0.25 });
+      award('ask');
       const next = [...followUps, reply];
       setFollowUps(next);
       if (recordId) await updateRecord<Saved>(recordId, { question, answer: answer.trim(), grade, revealed, followUps: next });

@@ -3,6 +3,7 @@ import { BookmarkCheck, BookmarkPlus, MessageCircleQuestion, X } from 'lucide-re
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { award } from '../lib/game';
 import { requestJson } from '../lib/llm';
 import { followUpPrompt, shapeFollowUp, type FollowUp } from '../lib/prompts';
 import { loadLlmSettings } from '../lib/settings';
@@ -76,6 +77,7 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, onClose
           }),
         },
       ], (raw) => shapeFollowUp(raw, q), { temperature: 0.25 });
+      award('ask');
       setAnswers((a) => [...a, reply]);
       setQuestion('');
     } catch (e) {

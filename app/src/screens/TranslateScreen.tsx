@@ -1,6 +1,7 @@
 // 中日互译 + 词汇语法拆解 + 追问（迁移自「ことば日和」）
 import { Clock3, Send } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
+import { award } from '../lib/game';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FollowUpPanel } from '../components/FollowUpPanel';
 import { RubyText } from '../components/Ruby';
@@ -44,6 +45,7 @@ export function TranslateScreen() {
         { role: 'system', content: TRANSLATION_PROMPT },
         { role: 'user', content: query },
       ], (raw) => shapeTranslation(raw, query), { temperature: 0.25 });
+      award('ask');
       const saved = { query, result, followUps: [] };
       setCurrent(saved);
       setRecordId(await addRecord('translation', query, saved));
@@ -73,6 +75,7 @@ export function TranslateScreen() {
           }),
         },
       ], (raw) => shapeFollowUp(raw, question), { temperature: 0.25 });
+      award('ask');
       const next = { ...current, followUps: [...current.followUps, reply] };
       setCurrent(next);
       if (recordId) await updateRecord(recordId, next);

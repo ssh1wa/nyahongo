@@ -1,5 +1,6 @@
 // 常读：保存下来的写作要求（比如「每天一篇科普」「今天的新闻」），每天点一次用同一个提示词写一篇新的
 import { kvGet, kvSet } from './db';
+import { award } from './game';
 import { getRecord } from './records';
 import {
   generateArticle, researchAndWrite, saveArticle, splitArticle, type Article, type ArticleLength, type ResearchStage,
@@ -73,5 +74,6 @@ export async function writeToday(
   const list = await listRoutines();
   const entry: RoutineEntry = { date: localDate(), title: out.title, subject: out.subject || undefined, urls: out.references.map((x) => x.url), articleId: id };
   await saveAll(list.map((r) => (r.id === routine.id ? { ...r, history: [entry, ...r.history].slice(0, HISTORY_LIMIT) } : r)));
+  award('routine', routine.id);
   return { id, article };
 }

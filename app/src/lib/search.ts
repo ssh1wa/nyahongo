@@ -3,6 +3,7 @@
 import { kvGet, kvSet } from './db';
 import { loadLlmSettings, type LlmSettings } from './settings';
 import * as SecureStore from 'expo-secure-store';
+import { recordUsage } from './usage';
 
 const DEEPSEEK = 'https://api.deepseek.com';
 const KEY_NAME = 'search-api-key';
@@ -57,7 +58,10 @@ async function callTool(path: string, body: object, key: string, timeoutMs = 250
         signal: controller.signal,
       });
       const payload = await res.json().catch(() => null);
-      if (res.ok) return payload;
+      if (res.ok) {
+        void recordUsage(path.endsWith('fetch') ? 'fetch' : 'search', 'DeepSeek');
+        return payload;
+      }
       // 文档建议 408 / 429 / 5xx 等一下再试
       if ((res.status === 408 || res.status === 429 || res.status >= 500) && attempt === 0) {
         await new Promise((r) => setTimeout(r, 1500));

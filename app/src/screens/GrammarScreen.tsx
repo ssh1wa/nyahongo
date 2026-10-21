@@ -1,6 +1,7 @@
 // 语法：按水平排好的课程（单元 → 语法点 → 课文 + 测验）+ 一句一练
 import { BookCheck, Check, ChevronLeft, ChevronRight, CircleDot, GraduationCap, RefreshCw, Search, Sparkles } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { award } from '../lib/game';
 import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, EmptyState, ErrorNote, ScreenHeader, Segmented, SectionLabel, Tag } from '../components/Ui';
@@ -239,6 +240,7 @@ function LessonView({ id, onBack }: { id: string; onBack: () => void }) {
     setSaved(true);
     // 答对三分之二以上算学会，否则标记为需要复习（练习会优先出这类语法）
     void setStatus(id, correct * 3 >= lesson.quiz.length * 2 ? 'learned' : 'review', { correct, total: lesson.quiz.length });
+    award('grammar', id);
   }, [finished, saved, lesson, correct, id]);
 
   return (

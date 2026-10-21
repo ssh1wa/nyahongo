@@ -1,6 +1,7 @@
 // 生词本 + FSRS 间隔复习。词条内容来自 JMdict（学习包里的 dictionary.json），不让 AI 编词条。
 import { createEmptyCard, fsrs, generatorParameters, Rating, TypeConvert, type Card, type Grade } from 'ts-fsrs';
 import { getDb } from './db';
+import { award } from './game';
 import type { DictEntry, Sentence, Token } from './types';
 
 const scheduler = fsrs(generatorParameters({ enable_fuzz: true, request_retention: 0.9 }));
@@ -70,6 +71,7 @@ export async function addWord(w: NewWord): Promise<boolean> {
     card.due.getTime(),
     Date.now(),
   );
+  award('word');
   return true;
 }
 
@@ -163,6 +165,7 @@ export async function review(word: WordRow, grade: Grade): Promise<void> {
     await db.runAsync('UPDATE words SET card = ?, due = ? WHERE id = ?', JSON.stringify(card), card.due.getTime(), word.id);
     await db.runAsync('INSERT INTO review_log (word_id, rating, reviewed_at) VALUES (?, ?, ?)', word.id, grade, now.getTime());
   });
+  award('review'); // 不看评分，免得为了小判乱按
 }
 
 export async function deleteWord(id: number): Promise<void> {

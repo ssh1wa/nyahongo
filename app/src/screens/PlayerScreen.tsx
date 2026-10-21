@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TokenText } from '../components/Ruby';
 import { WordSheet } from '../components/WordSheet';
 import { kvGet, kvSet } from '../lib/db';
+import { award, setMediaPlaying } from '../lib/game';
 import { loadPackage, mediaUri, saveProgress } from '../lib/packages';
 import type { PackageData, Sentence } from '../lib/types';
 import { radius, useColors, useTheme } from '../theme';
@@ -61,6 +62,9 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
     p.timeUpdateEventInterval = 0.1;
   });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  // 播放中算有效学习时间（不用一直点屏幕）
+  useEffect(() => { setMediaPlaying(isPlaying); }, [isPlaying]);
+  useEffect(() => () => setMediaPlaying(false), []);
 
   const [idx, setIdx] = useState(-1);
   const [loop, setLoop] = useState(false);
@@ -92,11 +96,12 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
     setZhRevealed(false);
     if (i >= 0) {
       void saveProgress(meta.id, i);
+      if (i === sentences.length - 1) award('listen', meta.id);
       if (Date.now() - userScrolledAt.current > 3000) {
         listRef.current?.scrollToIndex({ index: i, viewPosition: 0.3, animated: true });
       }
     }
-  }, [meta.id]);
+  }, [meta.id, sentences.length]);
 
   useEffect(() => {
     const sub = player.addListener('timeUpdate', ({ currentTime: t }) => {

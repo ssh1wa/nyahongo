@@ -1,6 +1,9 @@
-// 设置：AI 接口（自动检测模型、连接测试）、学习偏好、外观（主题/主题色/字号）、电脑同步、离线词典、关于
+// 设置：分栏 —— AI 接口（自动检测模型、连接测试、联网搜索）、用量、学习、外观、同步与词典、关于
 import Constants from 'expo-constants';
-import { Check, ChevronLeft, CircleCheck, CircleX, Download, Eye, EyeOff, Laptop, Moon, Palette, RefreshCw, Search, Sparkles, Sun, SunMoon, Trash2 } from 'lucide-react-native';
+import {
+  BarChart3, BookOpen, Bot, Check, ChevronLeft, CircleCheck, CircleX, Download, Eye, EyeOff, Info, Laptop, Moon, Palette, RefreshCw,
+  Search, Sparkles, Sun, SunMoon, Trash2,
+} from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,13 +15,29 @@ import { listModels, testModel, type ModelInfo } from '../lib/llm';
 import { getPcUrl, pingPc, setPcUrl } from '../lib/packages';
 import { deepseekSearch, loadOwnSearchKey, saveOwnSearchKey } from '../lib/search';
 import { DEFAULT_LLM, loadLlmSettings, saveLlmSettings, visionEndpoint, type Level, type LlmSettings } from '../lib/settings';
+import {
+  dailyCalls, deepinfraMonth, deepseekBalance, localUsage, providerKeys,
+  type DeepInfraMonth, type DeepSeekBalance, type UsageKind, type UsageRange, type UsageTotal,
+} from '../lib/usage';
 import { ACCENTS, radius, TEXT_SCALES, useColors, useTheme, type AccentId, type ThemeMode } from '../theme';
 
 const LEVELS: Level[] = ['入门', 'N5', 'N4', 'N3', 'N2', 'N1'];
 
+type Tab = 'ai' | 'usage' | 'learn' | 'look' | 'sync' | 'about';
+
+const TABS: Array<{ id: Tab; label: string; Icon: typeof Sun }> = [
+  { id: 'ai', label: 'AI 接口', Icon: Bot },
+  { id: 'usage', label: '用量', Icon: BarChart3 },
+  { id: 'learn', label: '学习', Icon: BookOpen },
+  { id: 'look', label: '外观', Icon: Palette },
+  { id: 'sync', label: '同步与词典', Icon: Laptop },
+  { id: 'about', label: '关于', Icon: Info },
+];
+
 export function SettingsScreen({ onBack }: { onBack: () => void }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<Tab>('ai');
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => sub.remove();
@@ -30,15 +49,25 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
         <Pressable onPress={onBack} hitSlop={10} style={styles.back}><ChevronLeft size={26} color={c.ink} /></Pressable>
         <Text style={{ color: c.ink, fontSize: 20, fontWeight: '800' }}>设置</Text>
       </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
+        {TABS.map(({ id, label, Icon }) => {
+          const on = tab === id;
+          return (
+            <Pressable key={id} onPress={() => setTab(id)} style={[styles.tab, { backgroundColor: on ? c.accent : c.surface, borderColor: on ? c.accent : c.line }]}>
+              <Icon size={15} color={on ? c.accentInk : c.ink2} />
+              <Text style={{ color: on ? c.accentInk : c.ink2, fontSize: 13.5, fontWeight: on ? '700' : '500' }}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="height">
-        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
-          <AiSection />
-          <SearchSection />
-          <LearningSection />
-          <AppearanceSection />
-          <PcSection />
-          <DictSection />
-          <AboutSection />
+        <ScrollView key={tab} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
+          {tab === 'ai' ? <><AiSection /><SearchSection /></> : null}
+          {tab === 'usage' ? <UsageSection /> : null}
+          {tab === 'learn' ? <LearningSection /> : null}
+          {tab === 'look' ? <AppearanceSection /> : null}
+          {tab === 'sync' ? <><PcSection /><DictSection /></> : null}
+          {tab === 'about' ? <AboutSection /> : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -370,6 +399,138 @@ function SearchSection() {
   );
 }
 
+// ---------- 用量 ----------
+
+const fmtTokens = (n: number) => (n >= 1e8 ? `${(n / 1e8).toFixed(2)} 亿` : n >= 1e4 ? `${(n / 1e4).toFixed(1)} 万` : String(n));
+const fmtUsd = (n: number) => (n > 0 && n < 0.01 ? '< $0.01' : `$${n.toFixed(2)}`);
+const shortModel = (m: string) => m.split('/').pop() ?? m;
+const KIND_LABEL: Record<UsageKind, string> = { text: '文字模型', vision: '识图模型', search: '联网搜索', fetch: '网页读取' };
+
+type ProviderState = {
+  loading: boolean;
+  deepinfra: Array<DeepInfraMonth | { error: string }>;
+  deepseek: Array<DeepSeekBalance[] | { error: string }>;
+  none: boolean;
+};
+
+function UsageSection() {
+  const c = useColors();
+  const [provider, setProvider] = useState<ProviderState>({ loading: true, deepinfra: [], deepseek: [], none: false });
+  const [range, setRange] = useState<UsageRange>('today');
+  const [local, setLocal] = useState<UsageTotal[] | null>(null);
+  const [daily, setDaily] = useState<Array<{ day: string; calls: number }>>([]);
+
+  const loadProvider = async () => {
+    setProvider((p) => ({ ...p, loading: true }));
+    const keys = await providerKeys(await loadOwnSearchKey());
+    const settle = <T,>(p: Promise<T>) => p.catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+    const [deepinfra, deepseek] = await Promise.all([
+      Promise.all(keys.deepinfra.map((k) => settle(deepinfraMonth(k)))),
+      Promise.all(keys.deepseek.map((k) => settle(deepseekBalance(k)))),
+    ]);
+    setProvider({ loading: false, deepinfra, deepseek, none: !keys.deepinfra.length && !keys.deepseek.length });
+  };
+  useEffect(() => { void loadProvider(); void dailyCalls(14).then(setDaily); }, []);
+  useEffect(() => { setLocal(null); void localUsage(range).then(setLocal); }, [range]);
+
+  const byKind = (kind: UsageKind) => (local ?? []).filter((r) => r.kind === kind);
+  const sum = (rows: UsageTotal[], k: 'calls' | 'input' | 'output') => rows.reduce((s, r) => s + r[k], 0);
+  const maxDaily = Math.max(1, ...daily.map((d) => d.calls));
+
+  return (
+    <>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1 }}><SectionLabel>服务商账单</SectionLabel></View>
+        <Button label="刷新" kind="ghost" small onPress={loadProvider} loading={provider.loading} icon={<RefreshCw size={14} color={c.ink2} />} />
+      </View>
+      <Card style={{ gap: 14 }}>
+        {provider.none ? (
+          <Text style={{ color: c.muted, fontSize: 13, lineHeight: 19 }}>目前只支持查询 DeepInfra 账单和 DeepSeek 余额。你用的接口不是这两家时，请看下面的本机统计。</Text>
+        ) : null}
+        {provider.loading && !provider.deepinfra.length && !provider.deepseek.length ? <ActivityIndicator color={c.accent} /> : null}
+        {provider.deepinfra.map((m, i) => ('error' in m ? <StatusLine key={`di${i}`} text={`DeepInfra：${m.error}`} /> : (
+          <View key={`di${i}`} style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text style={{ flex: 1, color: c.ink2, fontSize: 13 }}>DeepInfra · {m.period.replace('.', ' 年 ')} 月</Text>
+              <Text style={{ color: c.ink, fontSize: 22, fontWeight: '800' }}>{fmtUsd(m.usd)}</Text>
+            </View>
+            {m.models.map((x) => (
+              <View key={x.model} style={styles.usageRow}>
+                <Text numberOfLines={1} style={{ flex: 1, color: c.ink, fontSize: 13 }}>{shortModel(x.model)}</Text>
+                <Text style={{ color: c.muted, fontSize: 12 }}>输入 {fmtTokens(x.input)} · 输出 {fmtTokens(x.output)}</Text>
+                <Text style={{ width: 62, textAlign: 'right', color: c.ink2, fontSize: 13, fontWeight: '700' }}>{fmtUsd(x.usd)}</Text>
+              </View>
+            ))}
+          </View>
+        )))}
+        {provider.deepinfra.length && provider.deepseek.length ? <View style={[styles.divider, { backgroundColor: c.line }]} /> : null}
+        {provider.deepseek.map((b, i) => ('error' in b ? <StatusLine key={`ds${i}`} text={`DeepSeek：${b.error}`} /> : (
+          <View key={`ds${i}`} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <Text style={{ flex: 1, color: c.ink2, fontSize: 13 }}>DeepSeek 余额</Text>
+            <Text style={{ color: c.ink, fontSize: 22, fontWeight: '800' }}>
+              {b.map((x) => `${x.currency === 'CNY' ? '¥' : '$'}${x.total.toFixed(2)}`).join(' / ') || '¥0.00'}
+            </Text>
+          </View>
+        )))}
+        {!provider.none ? (
+          <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>这是整个账户的数据，电脑端用同一个 Key 的消耗也算在内。DeepInfra 按月结算，数字可能比实际晚几分钟。</Text>
+        ) : null}
+      </Card>
+
+      <SectionLabel>本机调用</SectionLabel>
+      <Card style={{ gap: 14 }}>
+        <Segmented options={[{ value: 'today', label: '今天' }, { value: 'week', label: '近 7 天' }, { value: 'month', label: '本月' }]} value={range} onChange={setRange} />
+        {!local ? <ActivityIndicator color={c.accent} /> : !local.length ? (
+          <Text style={{ color: c.muted, fontSize: 13 }}>这段时间还没有调用过 AI</Text>
+        ) : (
+          <View style={{ gap: 12 }}>
+            {(Object.keys(KIND_LABEL) as UsageKind[]).map((kind) => {
+              const rows = byKind(kind);
+              if (!rows.length) return null;
+              const tokens = kind === 'text' || kind === 'vision';
+              return (
+                <View key={kind} style={{ gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                    <Text style={{ flex: 1, color: c.ink, fontSize: 14, fontWeight: '700' }}>{KIND_LABEL[kind]}</Text>
+                    <Text style={{ color: c.ink2, fontSize: 13 }}>
+                      {sum(rows, 'calls')} 次{tokens ? ` · ${fmtTokens(sum(rows, 'input') + sum(rows, 'output'))} tokens` : ''}
+                    </Text>
+                  </View>
+                  {tokens ? rows.map((r) => (
+                    <Text key={r.model} numberOfLines={1} style={{ color: c.muted, fontSize: 12 }}>
+                      {shortModel(r.model)}：{r.calls} 次 · 输入 {fmtTokens(r.input)} · 输出 {fmtTokens(r.output)}
+                    </Text>
+                  )) : null}
+                </View>
+              );
+            })}
+            {byKind('search').length || byKind('fetch').length ? (
+              <Text style={{ color: c.muted, fontSize: 11.5 }}>
+                联网搜索和网页读取约 $0.00075 一次，本{range === 'today' ? '日' : range === 'week' ? '周' : '月'}约 {fmtUsd((sum(byKind('search'), 'calls') + sum(byKind('fetch'), 'calls')) * 0.00075)}
+              </Text>
+            ) : null}
+          </View>
+        )}
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: c.ink2, fontSize: 12.5 }}>最近 14 天的调用次数</Text>
+          <View style={styles.chart}>
+            {daily.map((d) => (
+              <View key={d.day} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                <View style={{ width: '70%', height: `${Math.max(d.calls ? 6 : 2, (d.calls / maxDaily) * 100)}%`, borderRadius: 3, backgroundColor: d.calls ? c.accent : c.surface2 }} />
+              </View>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ color: c.muted, fontSize: 11 }}>{daily[0]?.day.slice(5)}</Text>
+            <Text style={{ color: c.muted, fontSize: 11 }}>今天 {daily[daily.length - 1]?.calls ?? 0} 次</Text>
+          </View>
+        </View>
+        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>本机统计从这个版本开始记录，只算这台手机发出的请求。</Text>
+      </Card>
+    </>
+  );
+}
+
 // ---------- 学习 ----------
 
 function LearningSection() {
@@ -396,6 +557,13 @@ function LearningSection() {
         <Row label="整句译文" hint="点开：先自己理解，点一下才显示">
           <Segmented options={[{ value: 'tap', label: '点开' }, { value: 'show', label: '显示' }, { value: 'hidden', label: '隐藏' }]} value={prefs.zhMode} onChange={(v) => setPrefs({ zhMode: v })} />
         </Row>
+      </Card>
+      <SectionLabel>学习伙伴</SectionLabel>
+      <Card style={{ gap: 12 }}>
+        <Row label="小猫和收集小游戏" hint="学习得小判、开宝箱收集猫和装扮。关掉就是纯净模式">
+          <Segmented options={[{ value: 'on', label: '开' }, { value: 'off', label: '纯净' }]} value={prefs.companion ? 'on' : 'off'} onChange={(v) => setPrefs({ companion: v === 'on' })} />
+        </Row>
+        <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>纯净模式下页面上不会出现猫和小判提示，学习时长和小判照常记录，以后打开时可以直接用。</Text>
       </Card>
     </>
   );
@@ -597,6 +765,10 @@ function AboutSection() {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 56 },
+  tabs: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 36, borderRadius: 18, borderWidth: 1 },
+  usageRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  chart: { flexDirection: 'row', height: 56, alignItems: 'flex-end' },
   back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, gap: 12 },
   inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: radius.sm },

@@ -2,6 +2,7 @@
 // 相比旧 App 的改动：输出被截断时直接报错（让模型"重发完整 JSON"没用，长度上限一样）；
 // 429/5xx 自动重试；返回结果由调用方用 shape 函数做结构校验，字段缺失不会让界面崩溃。
 import { visionEndpoint, type LlmSettings } from './settings';
+import { recordUsage } from './usage';
 
 export class LlmError extends Error {}
 
@@ -90,6 +91,7 @@ export async function requestJson<T>(
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },
     }, options.timeoutMs, !!options.vision);
+    void recordUsage(options.vision ? 'vision' : 'text', model, num(payload?.usage?.prompt_tokens), num(payload?.usage?.completion_tokens));
     const choice = payload?.choices?.[0];
     if (choice?.finish_reason === 'length') throw new LlmError('回答太长被截断了，请把问题拆小一点再试');
     const content = choice?.message?.content;

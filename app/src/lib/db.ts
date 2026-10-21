@@ -52,6 +52,16 @@ const MIGRATIONS = [
      quiz_total INTEGER,
      updated_at INTEGER NOT NULL
    );`,
+  // v3：本机 API 用量，按天、类型、模型汇总（kind: text / vision / search / fetch）
+  `CREATE TABLE IF NOT EXISTS usage (
+     day TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     model TEXT NOT NULL,
+     calls INTEGER NOT NULL DEFAULT 0,
+     input INTEGER NOT NULL DEFAULT 0,
+     output INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (day, kind, model)
+   );`,
 ];
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {

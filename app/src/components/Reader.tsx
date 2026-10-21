@@ -1,6 +1,7 @@
 // 精读器：打开后逐批解析（注音、译文、重点词、语法），边解析边读；点句子看详情、查词、追问
 import { ChevronLeft, Languages, MessageCircleQuestion, RefreshCw, Type, X } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
+import { award } from '../lib/game';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requestJson } from '../lib/llm';
@@ -70,7 +71,14 @@ export function Reader({ id, initial, onBack }: { id: number; initial: Article; 
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.page}>
+      <ScrollView
+        contentContainerStyle={styles.page}
+        scrollEventThrottle={400}
+        onScroll={({ nativeEvent: e }) => {
+          // 全部解析完、并且滑到了文末，算读完一篇
+          if (done === total && total > 0 && e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 80) award('article', String(id));
+        }}
+      >
         {article.paragraphs.map((para, p) => (
           <View key={p} style={styles.paragraph}>
             {para.map((s, i) => {
@@ -128,6 +136,7 @@ function SentenceSheet({ sentence, level, onClose }: { sentence: ReadingSentence
         { role: 'system', content: followUpPrompt('sentence') },
         { role: 'user', content: JSON.stringify({ sentence: sentence.text, translation: sentence.zh, learnerLevel: level, previous: asks.slice(-4).map((a) => ({ question: a.question, answer: a.answer })), question }) },
       ], (raw) => shapeFollowUp(raw, question), { temperature: 0.25 });
+      award('ask');
       setAsks((a) => [...a, reply]);
       setQ('');
     } catch (e) {

@@ -1,6 +1,7 @@
 // 学习包：从 PC 局域网同步、本地存储、读取
 import { Directory, File, Paths } from 'expo-file-system';
 import { getDb, kvGet, kvSet } from './db';
+import { award } from './game';
 import type { DictEntry, PackageData, PackageMeta, Sentence } from './types';
 
 const ROOT = new Directory(Paths.document, 'packages');
@@ -90,6 +91,7 @@ export function downloadPackage(base: string, meta: PackageMeta, onProgress: (fr
       JSON.stringify({ ...localMeta, size_mb: meta.size_mb, has_thumb: files.some((f) => f.name === 'thumb.jpg') }),
       Date.now(),
     );
+    award('download', meta.id);
     onProgress(1);
   })();
   return { cancel: () => controller.abort(), done };

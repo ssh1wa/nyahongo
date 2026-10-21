@@ -4,10 +4,11 @@ import { createContext, useContext } from 'react';
 export type Nav = {
   openSettings: () => void;
   openPlayer: (packageId: string) => void;
+  openCatRoom: () => void;
   goTab: (tab: TabId) => void;
 };
 
 export type TabId = 'translate' | 'reading' | 'listen' | 'grammar' | 'words';
 
-export const NavContext = createContext<Nav>({ openSettings: () => {}, openPlayer: () => {}, goTab: () => {} });
+export const NavContext = createContext<Nav>({ openSettings: () => {}, openPlayer: () => {}, openCatRoom: () => {}, goTab: () => {} });
 export const useNav = () => useContext(NavContext);

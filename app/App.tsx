@@ -2,9 +2,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { BookMarked, BookOpenText, GraduationCap, Headphones, Languages } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { markActive, setForeground, tick } from './src/lib/game';
 import { NavContext, type Nav, type TabId } from './src/nav';
+import { CatRoomScreen } from './src/screens/CatRoomScreen';
 import { GrammarScreen } from './src/screens/GrammarScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
 import { PlayerScreen } from './src/screens/PlayerScreen';
@@ -28,10 +30,19 @@ function Main() {
   const [tab, setTab] = useState<TabId>('translate');
   const [playing, setPlaying] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [catRoomOpen, setCatRoomOpen] = useState(false);
   // 切过的标签保持挂载，切回来时页面状态还在（比如读到一半的文章）
   const [mounted, setMounted] = useState<Set<TabId>>(new Set(['translate']));
 
   useEffect(() => { void SystemUI.setBackgroundColorAsync(c.bg); }, [c.bg]);
+
+  // 有效学习计时：前台 + 最近有操作。纯净模式下也照常记（只是不显示）
+  useEffect(() => {
+    markActive();
+    const sub = AppState.addEventListener('change', (s) => { setForeground(s === 'active'); if (s === 'active') markActive(); });
+    const timer = setInterval(() => tick(15), 15000);
+    return () => { sub.remove(); clearInterval(timer); };
+  }, []);
 
   const goTab = useCallback((t: TabId) => {
     setTab(t);
@@ -40,14 +51,18 @@ function Main() {
   const nav: Nav = useMemo(() => ({
     openSettings: () => setSettingsOpen(true),
     openPlayer: (id: string) => setPlaying(id),
+    openCatRoom: () => setCatRoomOpen(true),
     goTab,
   }), [goTab]);
 
   const closePlayer = useCallback(() => setPlaying(null), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const closeCatRoom = useCallback(() => setCatRoomOpen(false), []);
 
   return (
     <NavContext.Provider value={nav}>
+      {/* 只观察触摸、不拦截：用来判断用户是不是在操作 */}
+      <View style={{ flex: 1 }} onStartShouldSetResponderCapture={() => { markActive(); return false; }}>
       <StatusBar style={c.dark ? 'light' : 'dark'} />
       <View style={[styles.root, { backgroundColor: c.bg, paddingTop: insets.top }]}>
         <View style={{ flex: 1 }}>
@@ -78,6 +93,8 @@ function Main() {
       </View>
       {playing ? <View style={StyleSheet.absoluteFill}><PlayerScreen id={playing} onClose={closePlayer} /></View> : null}
       {settingsOpen ? <View style={StyleSheet.absoluteFill}><SettingsScreen onBack={closeSettings} /></View> : null}
+      {catRoomOpen ? <View style={StyleSheet.absoluteFill}><CatRoomScreen onBack={closeCatRoom} /></View> : null}
+      </View>
     </NavContext.Provider>
   );
 }
