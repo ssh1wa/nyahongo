@@ -80,7 +80,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 24px 24px 64px; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-text > span { font-size: 17px; font-weight: 700; letter-spacing: .04em; }
 .brand-text small { font-size: 11px; color: var(--muted); letter-spacing: .1em; }
-.topbar-actions { display: flex; gap: 8px; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.lan-chip {
+  font-size: 12px; color: var(--ink-2); background: var(--surface-2);
+  padding: 4px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;
+}
+.lan-chip[hidden] { display: none; }
+@media (max-width: 560px) { .lan-chip { display: none; } }
 
 .icon-btn {
   width: 36px; height: 36px; border-radius: 10px;
@@ -235,6 +241,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 24px 24px 64px; }
 }
 .card:hover .card-delete { opacity: 1; }
 .card-delete:hover { background: var(--err); }
+.card-delete.redo { right: 44px; }
+.card-delete.redo:hover { background: var(--accent); }
 
 .empty {
   text-align: center; padding: 56px 16px; color: var(--muted);
@@ -357,6 +365,41 @@ kbd {
 .line.current .line-time { color: var(--accent); font-weight: 600; }
 .line-time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .line-text { font-size: 17px; line-height: 1.95; word-break: break-all; }
+
+/* 整句译文：模糊模式下鼠标移上去才清楚 */
+.now-zh { font-size: 15px; color: var(--ink-2); margin-top: 2px; line-height: 1.6; }
+.now-zh:empty { display: none; }
+.line-zh { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin-top: 1px; }
+.zh-blur .now-zh, .zh-blur .line-zh { filter: blur(5px); transition: filter .15s; }
+.zh-blur .now:hover .now-zh, .zh-blur .line:hover .line-zh { filter: none; }
+.zh-hidden .now-zh, .zh-hidden .line-zh { display: none; }
+
+/* 词条卡片 */
+.word-card {
+  position: relative;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 20px; box-shadow: var(--shadow);
+}
+.word-card[hidden] { display: none; }
+.wc-close { position: absolute; top: 10px; right: 10px; }
+.wc-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; padding-right: 36px; }
+.wc-word { font-size: 26px; font-weight: 700; }
+.wc-reading { color: var(--ruby); font-size: 15px; }
+.wc-form { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.wc-senses { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 8px; }
+.wc-senses li::marker { color: var(--muted); font-size: 13px; }
+.ws-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
+.ws-zh { font-size: 15px; }
+.ws-en { font-size: 12px; color: var(--muted); }
+
+.tooltip .tt-senses { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.tooltip .tt-senses li { margin: 1px 0; }
+.now-text .tok.word { cursor: pointer; }
+
+.attribution {
+  padding: 8px 16px; border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--muted);
+}
 
 /* 注音 */
 ruby { ruby-position: over; }

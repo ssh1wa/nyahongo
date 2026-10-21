@@ -7,12 +7,14 @@ split_sentences() 再把它切成适合逐句精听的句子。
 from __future__ import annotations
 
 import os
+import re
 import site
 import sys
 from pathlib import Path
 from typing import Callable
 
 from .config import WhisperConfig
+from .furigana import tokenize
 
 # 静音或纯音乐段上 Whisper 常编出的句子
 HALLUCINATIONS = {
@@ -28,6 +30,11 @@ HARD_GAP = 0.6  # 词间停顿超过这个秒数一定断句
 SOFT_GAP = 0.15  # 句子太长时，只在至少这么长的停顿处切
 MAX_SECONDS = 7.0  # 超过这个时长或字数就尝试再切
 MAX_CHARS = 32
+MAX_WORD_SECONDS = 2.5  # 单个词超过这么长，多半是时间戳把音乐也算进去了
+SECONDS_PER_CHAR = 0.3  # 估算正常语速下一个字的时长
+STRAY_GAP = 5.0  # 同一分段内超过这个空白，前面的碎片视为时间戳错位
+STRAY_CHARS = 3  # 只挪这么短的碎片，长的当作真实的话
+_CJK_SPACE = re.compile(r"(?<=[^\x00-\x7f])\s+(?=[^\x00-\x7f])")
 
 
 def _register_cuda_dlls() -> None:
@@ -104,22 +111,63 @@ def transcribe(
 
 
 def _text(words: list[dict]) -> str:
-    return "".join(w["word"] for w in words).strip()
+    # Whisper 的词有时带前导空格，日文字符之间的空格去掉（英文单词之间的保留）
+    return _CJK_SPACE.sub("", "".join(w["word"] for w in words)).strip()
 
 
 def _too_long(words: list[dict]) -> bool:
     return words[-1]["end"] - words[0]["start"] > MAX_SECONDS or len(_text(words)) > MAX_CHARS
 
 
+def _inside_word(left: list[dict], right: list[dict]) -> bool:
+    """left 和 right 之间的边界是否落在一个词的内部（各|自、本|日），这种地方不能断句。"""
+    tail = _text(left)[-8:]
+    head = _text(right)[:8]
+    if not tail or not head:
+        return False
+    pos = 0
+    for t in tokenize(tail + head):
+        end = pos + len(t["surface"])
+        if pos < len(tail) < end:
+            return True
+        pos = end
+    return False
+
+
+def _repair_timing(words: list[dict]) -> list[dict]:
+    """修正 Whisper 在音乐段附近给出的错位时间戳。
+
+    同一个分段里出现几十秒的空白，说明前面零星几个字的时间被拉散到了音乐上
+    （实测：「本日の授業」里「日」一个字占了 15 秒，后面的话在 90 秒之后）。
+    这种零星的字挪到后面那段话的前面；单个字持续好几秒的，也压缩到正常的说话长度。
+    """
+    out = [dict(w) for w in words]
+    for w in out:
+        chars = max(1, len(w["word"].strip()))
+        if w["end"] - w["start"] > MAX_WORD_SECONDS:
+            # 只缩短不拉长：字数多的片段按语速算出来可能比实际还长
+            w["start"] = round(max(w["start"], w["end"] - SECONDS_PER_CHAR * chars), 3)
+    # 从后往前：被长空白隔开的短碎片，贴到下一个词前面
+    for i in range(len(out) - 2, -1, -1):
+        w, nxt = out[i], out[i + 1]
+        if nxt["start"] - w["end"] > STRAY_GAP and len(w["word"].strip()) <= STRAY_CHARS:
+            dur = min(w["end"] - w["start"], SECONDS_PER_CHAR * max(1, len(w["word"].strip())))
+            w["end"] = nxt["start"]
+            w["start"] = round(nxt["start"] - dur, 3)
+    return out
+
+
 def _split_long(words: list[dict]) -> list[list[dict]]:
-    """在最长的停顿处递归二分，直到不再过长或找不到像样的停顿。"""
+    """在最长的停顿处递归二分，直到不再过长或找不到像样的停顿。不在词的中间切。"""
     if len(words) < 2 or not _too_long(words):
         return [words]
-    gaps = [(words[i]["start"] - words[i - 1]["end"], i) for i in range(1, len(words))]
-    gap, at = max(gaps)
-    if gap < SOFT_GAP:
-        return [words]
-    return _split_long(words[:at]) + _split_long(words[at:])
+    gaps = sorted(((words[i]["start"] - words[i - 1]["end"], i) for i in range(1, len(words))), reverse=True)
+    for gap, at in gaps:
+        if gap < SOFT_GAP:
+            break
+        if not _inside_word(words[:at], words[at:]):
+            return _split_long(words[:at]) + _split_long(words[at:])
+    return [words]
 
 
 def split_sentences(raw: list[dict]) -> list[dict]:
@@ -127,8 +175,9 @@ def split_sentences(raw: list[dict]) -> list[dict]:
     chunks: list[list[dict]] = []
     for seg in raw:
         current: list[dict] = []
-        for word in seg["words"]:
-            if current and word["start"] - current[-1]["end"] > HARD_GAP:
+        for word in _repair_timing(seg["words"]):
+            if (current and word["start"] - current[-1]["end"] > HARD_GAP
+                    and not _inside_word(current, [word])):
                 chunks.append(current)
                 current = []
             current.append(word)

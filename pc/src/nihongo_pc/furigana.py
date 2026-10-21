@@ -110,6 +110,7 @@ def tokenize(text: str) -> list[dict]:
             {
                 "surface": surface,
                 "base": m.dictionary_form(),
+                "norm": m.normalized_form(),  # 标准化形：いる → 居る，用来区分同音词
                 "reading": reading,
                 "pos": m.part_of_speech()[0],
                 "furigana": align(surface, reading),

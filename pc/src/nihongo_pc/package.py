@@ -99,20 +99,21 @@ def make_thumbnail(video: Path, pkg_dir: Path, ffmpeg: str) -> Path | None:
 
 
 def build_subtitles(sentences: list[dict], source: str) -> dict:
-    return {
-        "version": FORMAT_VERSION,
-        "source": source,  # whisper / manual
-        "sentences": [
-            {
-                "id": i,
-                "start": s["start"],
-                "end": s["end"],
-                "text": s["text"],
-                "tokens": tokenize(s["text"]),
-            }
-            for i, s in enumerate(sentences)
-        ],
-    }
+    """sentences 里没有 tokens 的会在这里分词；zh（整句翻译）、original（校对前原文）有就带上。"""
+    out = []
+    for i, s in enumerate(sentences):
+        item = {
+            "id": i,
+            "start": s["start"],
+            "end": s["end"],
+            "text": s["text"],
+            "tokens": s.get("tokens") or tokenize(s["text"]),
+        }
+        for key in ("zh", "original"):
+            if s.get(key):
+                item[key] = s[key]
+        out.append(item)
+    return {"version": FORMAT_VERSION, "source": source, "sentences": out}  # source: whisper / manual
 
 
 def write_package(
@@ -123,6 +124,8 @@ def write_package(
     source_url: str,
     subtitles: dict,
     whisper_model: str | None,
+    dictionary: dict | None = None,
+    refined_by: str | None = None,
 ) -> None:
     meta = {
         "version": FORMAT_VERSION,
@@ -135,11 +138,17 @@ def write_package(
         "sentence_count": len(subtitles["sentences"]),
         "subtitle_source": subtitles["source"],
         "whisper_model": whisper_model,
+        "refined_by": refined_by,  # 做 AI 校对和翻译的模型，没做则为 None
+        "has_dictionary": dictionary is not None,
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     (pkg_dir / "subtitles.json").write_text(
         json.dumps(subtitles, ensure_ascii=False, indent=1), encoding="utf-8"
     )
+    if dictionary is not None:
+        (pkg_dir / "dictionary.json").write_text(
+            json.dumps(dictionary, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
     (pkg_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )

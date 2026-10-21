@@ -19,3 +19,9 @@ device = "auto"           # auto / cuda / cpu
 compute_type = "auto"
 beam_size = 5
 initial_prompt = ""       # 可填角色名、专有名词，提高识别准确率
+
+[llm]
+# 任何 OpenAI 兼容接口都可以（DeepInfra、DeepSeek、本地模型……）
+base_url = "https://api.deepinfra.com/v1/openai"
+api_key = ""              # 也可以不填这里，改用环境变量 NIHONGO_LLM_API_KEY
+model = ""

@@ -1,4 +1,8 @@
-"""本地网页界面的后端：学习库、媒体播放、处理任务队列。只监听本机。"""
+"""本地网页界面的后端：学习库、媒体播放、处理任务队列。
+
+默认只监听本机。开了局域网同步（--lan）后，手机等其他设备只能读取和下载学习包，
+导入、删除、处理任务这些操作仍然只允许本机。
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import json
 import queue
 import re
 import shutil
+import socket
 import threading
 import time
 import traceback
@@ -15,18 +20,61 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import load_config
+from .dictionary import ATTRIBUTION
 from .package import make_thumbnail
 from .pipeline import STAGES, Options, PackageExists, run
 
 WEB_DIR = Path(__file__).parent / "web"
 _ID = re.compile(r"^[\w\-]+$")
+_FILE = re.compile(r"^(media\.\w+|subtitles\.json|dictionary\.json|meta\.json|thumb\.jpg)$")
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+# 其他设备能访问的路径（只读）
+REMOTE_ALLOWED = re.compile(r"^/api/(ping|library(/[\w\-]+(/(files(/[\w.\-]+)?|thumb|media))?)?)$")
 
 app = FastAPI(title="日语学习包")
+_lan = {"enabled": False, "port": 8765}
+
+
+@app.middleware("http")
+async def lan_read_only(request: Request, call_next):
+    client = request.client.host if request.client else ""
+    if client not in LOCAL_HOSTS:
+        if request.method not in ("GET", "HEAD") or not REMOTE_ALLOWED.match(request.url.path):
+            return JSONResponse({"detail": "其他设备只能读取学习包"}, status_code=403)
+    return await call_next(request)
+
+
+def lan_addresses() -> list[str]:
+    """本机在局域网里的 IPv4 地址（排除回环和虚拟网卡常见的 169.254）。"""
+    addrs: set[str] = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            addrs.add(info[4][0])
+    except OSError:
+        pass
+    try:  # 找默认出口网卡的地址，不会真的发包
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("223.5.5.5", 53))
+            addrs.add(s.getsockname()[0])
+    except OSError:
+        pass
+    return sorted(a for a in addrs if not a.startswith(("127.", "169.254.")))
+
+
+@app.get("/api/ping")
+def ping() -> dict:
+    return {"app": "nihongo-pc", "version": 1}
+
+
+@app.get("/api/lan")
+def lan_info() -> dict:
+    port = _lan["port"]
+    return {"enabled": _lan["enabled"], "urls": [f"http://{a}:{port}" for a in lan_addresses()]}
 
 
 # ---------- 学习库 ----------
@@ -65,7 +113,9 @@ def get_package(pkg_id: str) -> dict:
     d = _pkg_dir(pkg_id)
     meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
     subtitles = json.loads((d / "subtitles.json").read_text(encoding="utf-8"))
-    return {"meta": meta, "subtitles": subtitles}
+    dict_path = d / "dictionary.json"
+    dictionary = json.loads(dict_path.read_text(encoding="utf-8")) if dict_path.exists() else {}
+    return {"meta": meta, "subtitles": subtitles, "dictionary": dictionary, "attribution": ATTRIBUTION}
 
 
 @app.get("/api/library/{pkg_id}/media")
@@ -73,6 +123,23 @@ def get_media(pkg_id: str) -> FileResponse:
     d = _pkg_dir(pkg_id)
     meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
     return FileResponse(d / meta["media"])  # 支持 Range，可以拖动进度条
+
+
+@app.get("/api/library/{pkg_id}/files")
+def list_files(pkg_id: str) -> list[dict]:
+    """手机同步用：学习包里的文件和大小。"""
+    d = _pkg_dir(pkg_id)
+    return [{"name": f.name, "size": f.stat().st_size} for f in sorted(d.iterdir()) if _FILE.match(f.name)]
+
+
+@app.get("/api/library/{pkg_id}/files/{name}")
+def get_file(pkg_id: str, name: str) -> FileResponse:
+    if not _FILE.match(name):
+        raise HTTPException(404)
+    path = _pkg_dir(pkg_id) / name
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path)
 
 
 @app.get("/api/library/{pkg_id}/thumb")
@@ -197,12 +264,17 @@ def dismiss_job(job_id: str) -> dict:
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 
-def serve(port: int = 8765, open_browser: bool = True) -> None:
+def serve(port: int = 8765, open_browser: bool = True, lan: bool = False) -> None:
     import uvicorn
 
+    _lan.update(enabled=lan, port=port)
     threading.Thread(target=_worker, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
     print(f"日语学习包界面已启动：{url}（关闭这个窗口即可退出）")
+    if lan:
+        for a in lan_addresses():
+            print(f"手机同步地址：http://{a}:{port}")
+        print("第一次开启时 Windows 防火墙可能会弹窗，请允许「专用网络」访问")
     if open_browser:
         threading.Timer(1.0, webbrowser.open, [url]).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(app, host="0.0.0.0" if lan else "127.0.0.1", port=port, log_level="warning")

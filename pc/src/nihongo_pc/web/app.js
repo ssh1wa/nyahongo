@@ -82,6 +82,15 @@ const NON_WORD = new Set(["補助記号", "記号", "空白"]);
   });
 })();
 
+// 顶栏显示手机同步地址
+api("/api/lan").then((lan) => {
+  if (!lan.enabled || !lan.urls.length) return;
+  const chip = $("#lan-chip");
+  chip.textContent = `📱 手机同步：${lan.urls[0].replace("http://", "")}`;
+  chip.title = `在手机 App 的设置里填写这个地址\n${lan.urls.join("\n")}`;
+  chip.hidden = false;
+}).catch(() => {});
+
 // ---------- 路由 ----------
 let cleanup = () => {};
 function route() {
@@ -158,7 +167,17 @@ async function loadLibrary() {
     return;
   }
   box.innerHTML = `<div class="grid">${items.map(cardHtml).join("")}</div>`;
-  box.querySelectorAll(".card-delete").forEach((btn) => btn.addEventListener("click", async (e) => {
+  box.querySelectorAll("[data-redo]").forEach((btn) => btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const item = items.find((x) => x.id === btn.dataset.redo);
+    try {
+      await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: item.source_url, audio_only: item.media_type === "audio", overwrite: true }) });
+      toast("已加入队列：已下载的视频和转写结果会直接复用");
+      refreshJobs();
+    } catch (err) { toast(err.message); }
+  }));
+  box.querySelectorAll(".card-delete[data-id]").forEach((btn) => btn.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopPropagation();
     const item = items.find((x) => x.id === btn.dataset.id);
@@ -176,6 +195,7 @@ function cardHtml(m) {
   return `
     <a class="card" href="#/play/${m.id}">
       <button class="card-delete" data-id="${m.id}" title="删除">${ICONS.trash}</button>
+      ${m.source_url ? `<button class="card-delete redo" data-redo="${m.id}" title="重新处理（用上最新的 AI 校对和词典）">${ICONS.replay}</button>` : ""}
       <div class="thumb ${m.media_type === "audio" ? "audio" : ""}">${thumb}<span class="duration">${fmtTime(m.duration)}</span></div>
       <div class="card-body">
         <h3 class="card-title">${esc(m.title)}</h3>
@@ -185,7 +205,7 @@ function cardHtml(m) {
 }
 
 // ---------- 处理任务 ----------
-let stages = ["下载", "转写", "分词注音", "打包"];
+let stages = ["下载", "转写", "AI 校对", "分词查词", "打包"];
 const seenDone = new Set();
 
 async function refreshJobs() {
@@ -322,8 +342,9 @@ async function renderPlayer(id) {
     app.innerHTML = `<div class="empty">打不开这个学习包：${esc(err.message)}<br><br><a class="btn" href="#/">返回学习库</a></div>`;
     return;
   }
-  const { meta, subtitles } = data;
+  const { meta, subtitles, dictionary = {}, attribution = "" } = data;
   const sentences = subtitles.sentences;
+  const hasZh = sentences.some((s) => s.zh);
   document.title = `${meta.title} · ことば`;
   const isVideo = meta.media_type === "video";
 
@@ -351,15 +372,23 @@ async function renderPlayer(id) {
           <div class="seg" id="speed">${[0.75, 0.9, 1, 1.25].map((r) => `<button data-rate="${r}">${r}×</button>`).join("")}</div>
           <span class="ctl-label">注音</span>
           <div class="seg" id="ruby-mode"><button data-mode="show">显示</button><button data-mode="hover">悬停</button><button data-mode="hidden">隐藏</button></div>
+          ${hasZh ? `<span class="ctl-label">译文</span>
+          <div class="seg" id="zh-mode"><button data-zh="show">显示</button><button data-zh="blur">模糊</button><button data-zh="hidden">隐藏</button></div>` : ""}
         </div>
-        <div class="now"><div class="now-text" lang="ja" id="now-text"></div><div class="now-time" id="now-time"></div></div>
-        <div class="kbd-hint"><kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 上/下一句 · <kbd>R</kbd> 重听 · <kbd>L</kbd> 循环 · <kbd>P</kbd> 自动暂停 · <kbd>F</kbd> 切换注音</div>
+        <div class="now">
+          <div class="now-text" lang="ja" id="now-text"></div>
+          <div class="now-zh" id="now-zh"></div>
+          <div class="now-time" id="now-time"></div>
+        </div>
+        <div class="word-card" id="word-card" hidden></div>
+        <div class="kbd-hint"><kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 上/下一句 · <kbd>R</kbd> 重听 · <kbd>L</kbd> 循环 · <kbd>P</kbd> 自动暂停 · <kbd>F</kbd> 切换注音${hasZh ? " · <kbd>T</kbd> 切换译文" : ""} · 点击单词看完整词条</div>
       </div>
       <aside class="transcript">
-        <div class="transcript-head"><strong>字幕</strong><span>${sentences.length} 句 · ${meta.subtitle_source === "manual" ? "人工字幕" : "AI 转写"}</span></div>
-        <div class="lines" id="lines" lang="ja">
-          ${sentences.map((s, i) => `<div class="line" data-i="${i}"><span class="line-time">${fmtTime(s.start)}</span><span class="line-text">${rubyHtml(s.tokens, i)}</span></div>`).join("")}
+        <div class="transcript-head"><strong>字幕</strong><span>${sentences.length} 句 · ${meta.subtitle_source === "manual" ? "人工字幕" : "AI 转写"}${meta.refined_by ? " · AI 校对" : ""}</span></div>
+        <div class="lines" id="lines">
+          ${sentences.map((s, i) => `<div class="line" data-i="${i}"${s.original ? ` title="识别原文：${esc(s.original)}"` : ""}><span class="line-time">${fmtTime(s.start)}</span><div><div class="line-text" lang="ja">${rubyHtml(s.tokens, i)}</div>${s.zh ? `<div class="line-zh">${esc(s.zh)}</div>` : ""}</div></div>`).join("")}
         </div>
+        ${Object.keys(dictionary).length ? `<div class="attribution">${esc(attribution)}</div>` : ""}
       </aside>
     </div>
     <div class="tooltip" id="tooltip"></div>`;
@@ -369,6 +398,8 @@ async function renderPlayer(id) {
   const lineEls = [...lines.children];
   const nowText = $("#now-text");
   const nowTime = $("#now-time");
+  const nowZh = $("#now-zh");
+  const wordCard = $("#word-card");
   const playBtn = $("#btn-play");
   const fill = $("#fill");
 
@@ -378,6 +409,7 @@ async function renderPlayer(id) {
     autoPause: store.get("autoPause", false),
     rate: store.get("rate", 1),
     rubyMode: store.get("rubyMode", "show"),
+    zhMode: store.get("zhMode", "blur"),
     pauseAt: null, // 自动暂停的时间点
     userScrolledAt: 0,
   };
@@ -397,9 +429,10 @@ async function renderPlayer(id) {
     lineEls[state.idx]?.classList.remove("current");
     state.idx = i;
     const s = sentences[i];
-    if (!s) { nowText.innerHTML = '<span style="color:var(--muted);font-size:16px">按空格开始播放</span>'; nowTime.textContent = ""; return; }
+    if (!s) { nowText.innerHTML = '<span style="color:var(--muted);font-size:16px">按空格开始播放</span>'; nowTime.textContent = ""; nowZh.textContent = ""; return; }
     lineEls[i].classList.add("current");
     nowText.innerHTML = rubyHtml(s.tokens, i);
+    nowZh.textContent = s.zh || "";
     nowTime.textContent = `第 ${i + 1} / ${sentences.length} 句 · ${fmtTime(s.start)} – ${fmtTime(s.end)}`;
     if (!media.paused && state.autoPause) state.pauseAt = s.end;
     if (Date.now() - state.userScrolledAt > 3000) {
@@ -467,6 +500,17 @@ async function renderPlayer(id) {
     document.querySelectorAll("#ruby-mode button").forEach((b) => b.classList.toggle("on", b.dataset.mode === state.rubyMode));
     app.classList.toggle("ruby-hidden", state.rubyMode === "hidden");
     app.classList.toggle("ruby-hover", state.rubyMode === "hover");
+    document.querySelectorAll("#zh-mode button").forEach((b) => b.classList.toggle("on", b.dataset.zh === state.zhMode));
+    app.classList.toggle("zh-blur", state.zhMode === "blur");
+    app.classList.toggle("zh-hidden", state.zhMode === "hidden");
+  }
+  function cycleZh() {
+    if (!hasZh) return;
+    const modes = ["show", "blur", "hidden"];
+    state.zhMode = modes[(modes.indexOf(state.zhMode) + 1) % modes.length];
+    store.set("zhMode", state.zhMode);
+    syncToggles();
+    toast({ show: "译文：显示", blur: "译文：模糊，鼠标移上去显示", hidden: "译文：隐藏" }[state.zhMode]);
   }
   function toggleLoop() { state.loop = !state.loop; store.set("loop", state.loop); syncToggles(); toast(state.loop ? "单句循环：开" : "单句循环：关"); }
   function toggleAutoPause() {
@@ -499,6 +543,35 @@ async function renderPlayer(id) {
     if (!e.target.dataset.mode) return;
     state.rubyMode = e.target.dataset.mode; store.set("rubyMode", state.rubyMode); syncToggles();
   });
+  $("#zh-mode")?.addEventListener("click", (e) => {
+    if (!e.target.dataset.zh) return;
+    state.zhMode = e.target.dataset.zh; store.set("zhMode", state.zhMode); syncToggles();
+  });
+
+  // 点击当前句里的单词：显示完整词条
+  function showWordCard(token) {
+    const entry = token.dict != null ? dictionary[token.dict] : null;
+    const head = entry ? (entry.kanji[0] || entry.readings[0]) : token.base;
+    const readings = entry ? entry.readings.slice(0, 3).join("、") : token.reading || "";
+    const senses = entry ? entry.senses.map((s, i) => `
+      <li>
+        <div class="ws-tags">${[...s.pos, ...s.tags].map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
+        <div class="ws-zh">${esc(s.zh || s.en.join("; "))}</div>
+        ${s.zh ? `<div class="ws-en">${esc(s.en.join("; "))}</div>` : ""}
+      </li>`).join("") : `<li><div class="ws-en">词典里没有找到这个词</div></li>`;
+    wordCard.innerHTML = `
+      <button class="icon-btn wc-close" title="关闭">${ICONS.close}</button>
+      <div class="wc-head"><span class="wc-word" lang="ja">${esc(head)}</span><span class="wc-reading" lang="ja">${esc(readings)}</span>
+        ${entry?.common ? '<span class="tag manual">常用词</span>' : ""}</div>
+      ${token.surface !== head ? `<div class="wc-form">原文中的形式：<span lang="ja">${esc(token.surface)}</span></div>` : ""}
+      <ol class="wc-senses">${senses}</ol>`;
+    wordCard.hidden = false;
+    wordCard.querySelector(".wc-close").addEventListener("click", () => { wordCard.hidden = true; });
+  }
+  nowText.addEventListener("click", (e) => {
+    const tok = e.target.closest(".tok.word");
+    if (tok) showWordCard(sentences[tok.dataset.s].tokens[tok.dataset.t]);
+  });
   lines.addEventListener("click", (e) => {
     const line = e.target.closest(".line");
     if (line) playSentence(Number(line.dataset.i));
@@ -517,11 +590,15 @@ async function renderPlayer(id) {
     const tok = e.target.closest(".tok.word");
     if (!tok) return tip.classList.remove("show");
     const t = sentences[tok.dataset.s].tokens[tok.dataset.t];
+    const entry = t.dict != null ? dictionary[t.dict] : null;
+    const meanings = entry ? entry.senses.slice(0, 3).map((s) => s.zh || s.en.slice(0, 2).join("; ")) : [];
+    const pos = entry?.senses[0]?.pos.join(" · ") || POS_ZH[t.pos] || t.pos;
     tip.innerHTML = `
       <div class="tt-word" lang="ja">${esc(t.surface)}</div>
       ${t.reading ? `<div class="tt-reading" lang="ja">${esc(t.reading)}</div>` : ""}
       ${t.base && t.base !== t.surface ? `<div class="tt-row"><span>原形</span><span lang="ja">${esc(t.base)}</span></div>` : ""}
-      <div class="tt-row"><span>词性</span><span>${esc(POS_ZH[t.pos] || t.pos)}</span></div>`;
+      <div class="tt-row"><span>词性</span><span>${esc(pos)}</span></div>
+      ${meanings.length ? `<ol class="tt-senses">${meanings.map((m) => `<li>${esc(m)}</li>`).join("")}</ol>` : ""}`;
     const r = tok.getBoundingClientRect();
     tip.classList.add("show");
     const w = tip.offsetWidth, h = tip.offsetHeight;
@@ -540,6 +617,7 @@ async function renderPlayer(id) {
     const actions = {
       " ": togglePlay, ArrowLeft: prev, ArrowRight: next,
       r: replay, R: replay, l: toggleLoop, L: toggleLoop, p: toggleAutoPause, P: toggleAutoPause, f: cycleRuby, F: cycleRuby,
+      t: cycleZh, T: cycleZh, Escape: () => { wordCard.hidden = true; },
     };
     const fn = actions[e.key];
     if (fn) { e.preventDefault(); fn(); }
@@ -552,7 +630,7 @@ async function renderPlayer(id) {
     document.removeEventListener("keydown", onKey);
     app.removeEventListener("mouseover", showTip);
     app.removeEventListener("mouseleave", hideTip);
-    app.classList.remove("ruby-hidden", "ruby-hover");
+    app.classList.remove("ruby-hidden", "ruby-hover", "zh-blur", "zh-hidden");
     cancelAnimationFrame(raf);
     media.pause();
     media.removeAttribute("src");

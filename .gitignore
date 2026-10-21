@@ -9,3 +9,6 @@ pc/config.toml
 # 下载的媒体和生成的学习包
 pc/workspace/
 pc/library/
+
+# 词典数据（可重新下载生成）
+pc/data/

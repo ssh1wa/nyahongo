@@ -96,7 +96,7 @@ def cmd_menu(_: argparse.Namespace) -> None:
 def cmd_ui(args: argparse.Namespace) -> None:
     from .server import serve
 
-    serve(port=args.port, open_browser=not args.no_browser)
+    serve(port=args.port, open_browser=not args.no_browser, lan=args.lan)
 
 
 def main() -> None:
@@ -125,6 +125,7 @@ def main() -> None:
     ui = sub.add_parser("ui", help="打开网页界面（启动.bat 用的就是这个）")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    ui.add_argument("--lan", action="store_true", help="允许同一局域网的手机读取和下载学习包")
     ui.set_defaults(func=cmd_ui)
 
     args = parser.parse_args()

@@ -32,12 +32,23 @@ class WhisperConfig:
 
 
 @dataclass
+class LlmConfig:
+    base_url: str = "https://api.deepinfra.com/v1/openai"
+    api_key: str = ""  # 留空则读环境变量 NIHONGO_LLM_API_KEY
+    model: str = ""
+
+    def key(self) -> str:
+        return self.api_key or os.environ.get("NIHONGO_LLM_API_KEY", "")
+
+
+@dataclass
 class Config:
     workspace: Path = PC_ROOT / "workspace"  # 下载的原始文件
     library: Path = PC_ROOT / "library"  # 生成的学习包，手机从这里同步
     ffmpeg: str = ""
     download: DownloadConfig = field(default_factory=DownloadConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
+    llm: LlmConfig = field(default_factory=LlmConfig)
 
     def ffmpeg_path(self) -> str:
         if self.ffmpeg:
@@ -70,4 +81,6 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         setattr(cfg.download, key, value)
     for key, value in data.get("whisper", {}).items():
         setattr(cfg.whisper, key, value)
+    for key, value in data.get("llm", {}).items():
+        setattr(cfg.llm, key, value)
     return cfg
