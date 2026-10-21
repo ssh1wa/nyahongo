@@ -51,6 +51,7 @@ export type GameState = {
   shards: number; // 毛玉
   owned: Record<string, number>;
   room: Room;
+  testReset1022?: boolean; // 2026-10-22 撤回过真机测试时加的宝箱和开出来的东西
   pity: { rare: number; epic: number };
   draws: number;
   today: Day;
@@ -66,7 +67,7 @@ const initial = (): GameState => ({
   version: 2, coins: 0, chests: 1, chestSeconds: 0, shards: 0,
   owned: { [STARTER_CAT]: 1, [STARTER_SCENE]: 1 },
   room: { scene: STARTER_SCENE, cats: [{ id: STARTER_CAT, hat: null }], furniture: [] },
-  pity: { rare: 0, epic: 0 }, draws: 0, today: newDay(), history: [],
+  pity: { rare: 0, epic: 0 }, draws: 0, today: newDay(), history: [], testReset1022: true,
 });
 
 /** 旧版存档（只有 equipped 一只猫一件饰品）→ 房间 */
@@ -79,6 +80,16 @@ function migrate(raw: any): GameState {
   }
   delete s.equipped;
   s.version = 2;
+  // 一次性：2026-10-22 真机测试时加了 20 个宝箱并开了一部分，恢复到测试前（白猫戴鬼角、和室，宝箱清零），学习攒的小判保留
+  if (raw.room && !raw.testReset1022) { // 看原始存档：s 里铺过 initial()，那里的标记是 true
+    s.owned = { [STARTER_CAT]: 1, oninotsuno: 1, [STARTER_SCENE]: 1 };
+    s.room = { scene: STARTER_SCENE, cats: [{ id: STARTER_CAT, hat: 'oninotsuno' }], furniture: [] };
+    s.chests = 0;
+    s.shards = 0;
+    s.draws = 1;
+    s.pity = { rare: 0, epic: 0 };
+  }
+  s.testReset1022 = true;
   return s;
 }
 
@@ -261,11 +272,6 @@ export function exchange(id: string): Promise<Item> {
     s.owned[id] = 1;
     return item;
   });
-}
-
-/** 测试用：直接加宝箱（设置 → 关于里长按版本号） */
-export function grantTestChests(n: number): Promise<void> {
-  return mutate((s) => { s.chests += n; });
 }
 
 // ---------- 房间布置 ----------
