@@ -6,14 +6,15 @@ set "ANDROID_DIR=%~dp0android"
 set "TOOLCHAIN=D:\Myproject\APPs\KotobaBiyori\.toolchain"
 if not "%NIHONGO_TOOLCHAIN%"=="" set "TOOLCHAIN=%NIHONGO_TOOLCHAIN%"
 rem The Gradle cache path is long enough that some React Native headers exceed
-rem the Windows 260-character limit in ninja. A short directory junction points
-rem at the same cache, so nothing is copied or downloaded again.
-set "SHORT_GRADLE=D:\Myproject\.kbgradle"
-if not exist "%SHORT_GRADLE%" mklink /J "%SHORT_GRADLE%" "%TOOLCHAIN%\gradle-home" >nul
+rem the Windows 260-character limit in ninja, so it is mapped to a short drive
+rem letter with subst. Not a directory junction: Kotlin build scripts
+rem (.gradle.kts, e.g. react-native-worklets) fail to compile through a junction.
+set "GRADLE_DRIVE=K:"
+if not exist "%GRADLE_DRIVE%\caches" subst %GRADLE_DRIVE% "%TOOLCHAIN%\gradle-home"
 set "JAVA_HOME=%TOOLCHAIN%\jdk"
 set "ANDROID_HOME=%TOOLCHAIN%\android-sdk"
 set "ANDROID_SDK_ROOT=%TOOLCHAIN%\android-sdk"
-set "GRADLE_USER_HOME=%SHORT_GRADLE%"
+set "GRADLE_USER_HOME=%GRADLE_DRIVE%\"
 set "PATH=%JAVA_HOME%\bin;%ANDROID_HOME%\platform-tools;%PATH%"
 pushd "%ANDROID_DIR%"
 call "%ANDROID_DIR%\gradlew.bat" assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain

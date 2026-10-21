@@ -327,7 +327,7 @@ function PhotoForm({ onDone }: { onDone: (text: string) => void }) {
   };
   const shoot = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { Alert.alert('需要相机权限', '在系统设置里允许「ことば精听」使用相机后再试。'); return; }
+    if (!perm.granted) { Alert.alert('需要相机权限', '在系统设置里允许「にゃほんご」使用相机后再试。'); return; }
     const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     if (!r.canceled) setImages((cur) => [...cur, ...r.assets.map((a) => ({ uri: a.uri, width: a.width }))].slice(0, 20));
   };

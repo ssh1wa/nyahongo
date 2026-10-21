@@ -11,6 +11,7 @@ import { RubyText } from '../components/Ruby';
 import { Button, Card, ErrorNote, Segmented, SectionLabel } from '../components/Ui';
 import { deleteDict, downloadDict, localDictInfo, remoteDictInfo, type DictInfo } from '../lib/dict';
 import { ATTRIBUTION as GRAMMAR_ATTRIBUTION } from '../lib/grammar';
+import { grantTestChests } from '../lib/game';
 import { listModels, testModel, type ModelInfo } from '../lib/llm';
 import { getPcUrl, pingPc, setPcUrl } from '../lib/packages';
 import { deepseekSearch, loadOwnSearchKey, saveOwnSearchKey } from '../lib/search';
@@ -750,7 +751,13 @@ function AboutSection() {
       <Card style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Sparkles size={18} color={c.accent} />
-          <Text style={{ color: c.ink, fontSize: 15, fontWeight: '700' }}>ことば精听 {version}</Text>
+          <Text
+            onLongPress={() => Alert.alert('测试', '给学习伙伴加 20 个宝箱？', [
+              { text: '取消', style: 'cancel' },
+              { text: '加', onPress: () => void grantTestChests(20) },
+            ])}
+            style={{ color: c.ink, fontSize: 15, fontWeight: '700' }}
+          >にゃほんご {version}</Text>
         </View>
         <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
           词典：JMdict © Electronic Dictionary Research and Development Group，CC BY-SA 4.0（JSON 版本来自 jmdict-simplified）{'\n'}

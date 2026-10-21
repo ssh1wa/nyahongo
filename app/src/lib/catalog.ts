@@ -1,22 +1,14 @@
-// 收藏品图鉴：每件都有日语名、读音、中文和一句简单的日语介绍，图鉴本身就是一本小词汇书。
-// 美术现在是占位的像素图（components/PixelCat 按颜色和花纹画出来），以后换成正式素材时只改 sprite 字段。
+// 收藏品图鉴：24 只猫、24 件饰品、8 个场景、8 件家具。每件都有日语名、读音、中文和一句简单的日语介绍，
+// 图鉴本身就是一本小词汇书。美术由 art/tools/ 下的脚本生成（app/assets/game/），帧数据在 src/game/spriteData.ts。
 // line 里的「漢字(かな)」会被解析成注音。
 
+import { SPRITE_META } from '../game/spriteData';
+
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
-export type ItemKind = 'cat' | 'hat';
+export type ItemKind = 'cat' | 'hat' | 'scene' | 'furniture';
+export type Body = 'manmaru' | 'mochi' | 'surari' | 'fuwa';
 
-/** 猫的花纹：占位图按这个给毛色分区上色 */
-export type CatPattern = 'plain' | 'stripes' | 'calico' | 'hachiware' | 'socks' | 'points' | 'tortie' | 'chashiro' | 'maneki' | 'nekomata';
-/** 装扮的形状：占位图按这个在猫头上画 */
-export type HatShape = 'band' | 'bow' | 'straw' | 'glasses' | 'collar' | 'beret' | 'mask' | 'flower' | 'horns' | 'cap' | 'crown' | 'wreath' | 'halo' | 'ears';
-
-export type CatLook = { pattern: CatPattern; fur: string; belly: string; patch: string; patch2?: string; eye?: string };
-export type HatLook = { shape: HatShape; main: string; accent: string };
-
-type Base = { id: string; rarity: Rarity; ja: string; kana: string; zh: string; line: string };
-export type CatItem = Base & { kind: 'cat'; look: CatLook };
-export type HatItem = Base & { kind: 'hat'; look: HatLook };
-export type Item = CatItem | HatItem;
+export type Item = { id: string; kind: ItemKind; rarity: Rarity; ja: string; kana: string; zh: string; line: string; body?: Body };
 
 export const RARITY: Record<Rarity, { label: string; ja: string; color: string; weight: number; shards: number; cost: number }> = {
   common: { label: '普通', ja: 'ふつう', color: '#8C8478', weight: 70, shards: 5, cost: 40 },
@@ -27,52 +19,98 @@ export const RARITY: Record<Rarity, { label: string; ja: string; color: string; 
 
 export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
 
-const cat = (id: string, rarity: Rarity, ja: string, kana: string, zh: string, line: string, look: CatLook): CatItem =>
-  ({ id, kind: 'cat', rarity, ja, kana, zh, line, look });
-const hat = (id: string, rarity: Rarity, ja: string, kana: string, zh: string, line: string, look: HatLook): HatItem =>
-  ({ id, kind: 'hat', rarity, ja, kana, zh, line, look });
+export const KIND_LABEL: Record<ItemKind, string> = { cat: '猫', hat: '饰品', scene: '场景', furniture: '家具' };
 
-export const ITEMS: Item[] = [
-  // ---------- 猫 ----------
-  cat('shiro', 'common', '白猫', 'しろねこ', '白猫', '雪(ゆき)のように白(しろ)い猫(ねこ)です。', { pattern: 'plain', fur: '#F4EFE6', belly: '#FFFFFF', patch: '#F4EFE6' }),
-  cat('kuro', 'common', '黒猫', 'くろねこ', '黑猫', '夜(よる)が大好(だいす)きな黒(くろ)い猫(ねこ)です。', { pattern: 'plain', fur: '#3A3634', belly: '#4A4542', patch: '#3A3634', eye: '#E8C547' }),
-  cat('chatora', 'common', '茶トラ', 'ちゃとら', '橘色虎斑猫', 'よく食(た)べて、よく寝(ね)ます。', { pattern: 'stripes', fur: '#E9A55B', belly: '#F7DDB8', patch: '#C9772E' }),
-  cat('kijitora', 'common', 'キジトラ', 'きじとら', '狸花猫', '日本(にほん)でいちばん多(おお)い柄(がら)です。', { pattern: 'stripes', fur: '#9C8466', belly: '#D9C8AE', patch: '#5E4D3A' }),
-  cat('sabatora', 'common', 'サバトラ', 'さばとら', '银虎斑猫', '魚(さかな)のサバに似(に)た色(いろ)です。', { pattern: 'stripes', fur: '#A9AEB2', belly: '#E4E6E8', patch: '#5F666C' }),
-  cat('hachiware', 'common', 'ハチワレ', 'はちわれ', '八字脸猫', '顔(かお)の柄(がら)が「八(はち)」の字(じ)です。', { pattern: 'hachiware', fur: '#3F3B39', belly: '#FFFFFF', patch: '#3F3B39' }),
-  cat('mike', 'rare', '三毛猫', 'みけねこ', '三花猫', '三(みっ)つの色(いろ)がある猫(ねこ)です。', { pattern: 'calico', fur: '#FBF6EE', belly: '#FFFFFF', patch: '#E39A4C', patch2: '#3D3836' }),
-  cat('kutsushita', 'rare', '靴下猫', 'くつしたねこ', '白手套猫', '足(あし)だけ白(しろ)い靴下(くつした)をはいています。', { pattern: 'socks', fur: '#55504C', belly: '#FFFFFF', patch: '#FFFFFF' }),
-  cat('shamu', 'rare', 'シャム猫', 'しゃむねこ', '暹罗猫', '青(あお)い目(め)がきれいです。', { pattern: 'points', fur: '#F1E4CC', belly: '#F8F0E0', patch: '#5B4335', eye: '#4A8FD6' }),
-  cat('sabi', 'rare', '錆猫', 'さびねこ', '玳瑁猫', '黒(くろ)と茶色(ちゃいろ)がまざっています。', { pattern: 'tortie', fur: '#3B302B', belly: '#5A4334', patch: '#B8692F', patch2: '#7A4A27' }),
-  cat('chashiro', 'rare', '茶白', 'ちゃしろ', '橘白猫', 'おなかがまっ白(しろ)でふわふわです。', { pattern: 'chashiro', fur: '#E39A4C', belly: '#FFFFFF', patch: '#FFFFFF' }),
-  cat('maneki', 'epic', '招き猫', 'まねきねこ', '招财猫', '手(て)をあげて、お客(きゃく)さんを呼(よ)びます。', { pattern: 'maneki', fur: '#FFFFFF', belly: '#FFFFFF', patch: '#E39A4C', patch2: '#C8352B' }),
-  cat('sakura', 'epic', '桜猫', 'さくらねこ', '樱花猫', '春(はる)になると、毛(け)が桜色(さくらいろ)になります。', { pattern: 'plain', fur: '#F6C4D2', belly: '#FDE8EE', patch: '#F6C4D2' }),
-  cat('yukimi', 'epic', '雪見猫', 'ゆきみねこ', '赏雪猫', '窓(まど)から雪(ゆき)を見(み)るのが好(す)きです。', { pattern: 'points', fur: '#E7F0F8', belly: '#FFFFFF', patch: '#8FB3D9', eye: '#5DA2E0' }),
-  cat('kinmaneki', 'legendary', '金の招き猫', 'きんのまねきねこ', '金招财猫', 'ぴかぴか光(ひか)る、幸運(こううん)の猫(ねこ)です。', { pattern: 'maneki', fur: '#F2C94C', belly: '#FBE6A0', patch: '#D29A1E', patch2: '#C8352B' }),
-  cat('nekomata', 'legendary', '猫又', 'ねこまた', '猫又', '長(なが)く生(い)きた猫(ねこ)は、しっぽが二本(にほん)になるそうです。', { pattern: 'nekomata', fur: '#7B6AA6', belly: '#B9AEDA', patch: '#4E4078', eye: '#F3D35C' }),
+type Row = [id: string, rarity: Rarity, ja: string, kana: string, zh: string, line: string];
+const C = 'common', R = 'rare', E = 'epic', L = 'legendary';
 
-  // ---------- 装扮 ----------
-  hat('hachimaki', 'common', '鉢巻', 'はちまき', '头巾', 'がんばる時(とき)に頭(あたま)にまきます。', { shape: 'band', main: '#FFFFFF', accent: '#D8443A' }),
-  hat('ribon', 'common', 'リボン', 'りぼん', '蝴蝶结', 'かわいい赤(あか)いリボンです。', { shape: 'bow', main: '#D8443A', accent: '#A82D25' }),
-  hat('mugiwara', 'common', '麦わら帽子', 'むぎわらぼうし', '草帽', '夏(なつ)の日(ひ)にかぶります。', { shape: 'straw', main: '#E9C46A', accent: '#C8352B' }),
-  hat('megane', 'common', '眼鏡', 'めがね', '眼镜', '本(ほん)を読(よ)む時(とき)にかけます。', { shape: 'glasses', main: '#3A3634', accent: '#9ED0F0' }),
-  hat('suzu', 'common', '鈴', 'すず', '铃铛', '歩(ある)くと、ちりんと鳴(な)ります。', { shape: 'collar', main: '#D8443A', accent: '#F2C94C' }),
-  hat('bere', 'common', 'ベレー帽', 'べれーぼう', '贝雷帽', '絵(え)をかく人(ひと)がよくかぶります。', { shape: 'beret', main: '#6B8E5A', accent: '#4E6B40' }),
-  hat('kitsunemen', 'rare', '狐の面', 'きつねのめん', '狐狸面具', 'お祭(まつ)りで買(か)ったお面(めん)です。', { shape: 'mask', main: '#FFFFFF', accent: '#D8443A' }),
-  hat('kamikazari', 'rare', '桜の髪飾り', 'さくらのかみかざり', '樱花发饰', '春(はる)らしい髪飾(かみかざ)りです。', { shape: 'flower', main: '#F4A6BD', accent: '#F2C94C' }),
-  hat('oninotsuno', 'rare', '鬼の角', 'おにのつの', '鬼角', '節分(せつぶん)の日(ひ)は、鬼(おに)になります。', { shape: 'horns', main: '#D8443A', accent: '#F2C94C' }),
-  hat('tenugui', 'rare', '手ぬぐい', 'てぬぐい', '手巾', '昔(むかし)から使(つか)われている布(ぬの)です。', { shape: 'band', main: '#3F6FA8', accent: '#FFFFFF' }),
-  hat('gakubou', 'rare', '学帽', 'がくぼう', '学生帽', 'まじめな学生(がくせい)の帽子(ぼうし)です。', { shape: 'cap', main: '#2F2D3A', accent: '#F2C94C' }),
-  hat('oukan', 'epic', '王冠', 'おうかん', '王冠', '王様(おうさま)がかぶる冠(かんむり)です。', { shape: 'crown', main: '#F2C94C', accent: '#D8443A' }),
-  hat('hanakanmuri', 'epic', '花冠', 'はなかんむり', '花冠', '野原(のはら)の花(はな)で作(つく)りました。', { shape: 'wreath', main: '#7FB069', accent: '#F4A6BD' }),
-  hat('tenshinowa', 'epic', '天使の輪', 'てんしのわ', '天使光环', '頭(あたま)の上(うえ)で光(ひか)っています。', { shape: 'halo', main: '#F7DC6F', accent: '#FFF6C8' }),
-  hat('inari', 'legendary', '稲荷の狐耳', 'いなりのきつねみみ', '稻荷狐耳', '神社(じんじゃ)の狐(きつね)の力(ちから)をもらいました。', { shape: 'ears', main: '#F2C94C', accent: '#FFFFFF' }),
-  hat('ryuunotsuno', 'legendary', '竜の角', 'りゅうのつの', '龙角', '空(そら)を飛(と)ぶ竜(りゅう)の角(つの)です。', { shape: 'horns', main: '#3FA796', accent: '#B8F0E0' }),
+const CATS: Row[] = [
+  ['shiro', C, '白猫', 'しろねこ', '白猫', '雪(ゆき)のように白(しろ)い猫(ねこ)です。'],
+  ['chatora', C, '茶トラ', 'ちゃとら', '橘色虎斑猫', 'よく食(た)べて、よく寝(ね)ます。'],
+  ['hachiware', C, 'ハチワレ', 'はちわれ', '八字脸猫', '顔(かお)の柄(がら)が「八(はち)」の字(じ)です。'],
+  ['mike', R, '三毛猫', 'みけねこ', '三花猫', '三(みっ)つの色(いろ)がある猫(ねこ)です。'],
+  ['kutsushita', R, '靴下猫', 'くつしたねこ', '白手套猫', '足(あし)だけ白(しろ)い靴下(くつした)をはいています。'],
+  ['maneki', E, '招き猫', 'まねきねこ', '招财猫', '手(て)をあげて、お客(きゃく)さんを呼(よ)びます。'],
+  ['sabatora', C, 'サバトラ', 'さばとら', '银虎斑猫', '魚(さかな)のサバに似(に)た色(いろ)です。'],
+  ['buchi', C, 'ぶち猫', 'ぶちねこ', '花斑猫', '大(おお)きな黒(くろ)いもようがあります。'],
+  ['kijishiro', C, 'キジ白', 'きじしろ', '狸花白猫', '顔(かお)とおなかが白(しろ)いキジトラです。'],
+  ['sabi', R, '錆猫', 'さびねこ', '玳瑁猫', '黒(くろ)と茶色(ちゃいろ)がまざっています。'],
+  ['chashiro', R, '茶白', 'ちゃしろ', '橘白猫', 'おなかがまっ白(しろ)でふわふわです。'],
+  ['kinmaneki', L, '金の招き猫', 'きんのまねきねこ', '金招财猫', 'ぴかぴか光(ひか)る、幸運(こううん)の猫(ねこ)です。'],
+  ['kuro', C, '黒猫', 'くろねこ', '黑猫', '夜(よる)が大好(だいす)きな黒(くろ)い猫(ねこ)です。'],
+  ['shamu', R, 'シャム猫', 'しゃむねこ', '暹罗猫', '青(あお)い目(め)がきれいです。'],
+  ['roshian', R, 'ロシアンブルー', 'ろしあんぶるー', '俄罗斯蓝猫', '緑(みどり)の目(め)と銀色(ぎんいろ)の毛(け)がきれいです。'],
+  ['bengaru', R, 'ベンガル猫', 'べんがるねこ', '孟加拉猫', 'ヒョウのようなもようがあります。'],
+  ['tsukimi', E, '月見猫', 'つきみねこ', '赏月猫', '秋(あき)の夜(よる)、月(つき)を見(み)るのが好(す)きです。'],
+  ['nekomata', L, '猫又', 'ねこまた', '猫又', '長(なが)く生(い)きた猫(ねこ)は、しっぽが二本(にほん)になるそうです。'],
+  ['kijitora', C, 'キジトラ', 'きじとら', '狸花猫', '日本(にほん)でいちばん多(おお)い柄(がら)です。'],
+  ['kuriimu', C, 'クリーム猫', 'くりーむねこ', '奶油色猫', 'やさしいクリーム色(いろ)の猫(ねこ)です。'],
+  ['mugiwaraneko', C, '麦わら猫', 'むぎわらねこ', '麦秆色虎斑猫', '麦(むぎ)わらのような明(あか)るい色(いろ)です。'],
+  ['perusha', R, 'ペルシャ猫', 'ぺるしゃねこ', '波斯猫', 'ふわふわの長(なが)い毛(け)の猫(ねこ)です。'],
+  ['sakura', E, '桜猫', 'さくらねこ', '樱花猫', '春(はる)になると、毛(け)が桜色(さくらいろ)になります。'],
+  ['yukimi', E, '雪見猫', 'ゆきみねこ', '赏雪猫', '窓(まど)から雪(ゆき)を見(み)るのが好(す)きです。'],
 ];
+
+const HATS: Row[] = [
+  ['hachimaki', C, '鉢巻', 'はちまき', '头巾', 'がんばる時(とき)に頭(あたま)にまきます。'],
+  ['ribon', C, 'リボン', 'りぼん', '蝴蝶结', 'かわいい赤(あか)いリボンです。'],
+  ['mugiwara', C, '麦わら帽子', 'むぎわらぼうし', '草帽', '夏(なつ)の日(ひ)にかぶります。'],
+  ['megane', C, '眼鏡', 'めがね', '眼镜', '本(ほん)を読(よ)む時(とき)にかけます。'],
+  ['suzu', C, '鈴', 'すず', '铃铛', '歩(ある)くと、ちりんと鳴(な)ります。'],
+  ['bere', C, 'ベレー帽', 'べれーぼう', '贝雷帽', '絵(え)をかく人(ひと)がよくかぶります。'],
+  ['keito', C, '毛糸の帽子', 'けいとのぼうし', '毛线帽', '冬(ふゆ)はこれであたたかいです。'],
+  ['mafuraa', C, 'マフラー', 'まふらー', '围巾', '首(くび)にまくと、ぽかぽかします。'],
+  ['chounekutai', C, '蝶ネクタイ', 'ちょうねくたい', '领结', 'パーティーに行(い)く時(とき)につけます。'],
+  ['heddohon', C, 'ヘッドホン', 'へっどほん', '耳机', '日本語(にほんご)を聞(き)いて勉強中(べんきょうちゅう)です。'],
+  ['kitsunemen', R, '狐の面', 'きつねのめん', '狐狸面具', 'お祭(まつ)りで買(か)ったお面(めん)です。'],
+  ['kamikazari', R, '桜の髪飾り', 'さくらのかみかざり', '樱花发饰', '春(はる)らしい髪飾(かみかざ)りです。'],
+  ['oninotsuno', R, '鬼の角', 'おにのつの', '鬼角', '節分(せつぶん)の日(ひ)は、鬼(おに)になります。'],
+  ['tenugui', R, '手ぬぐい', 'てぬぐい', '手巾', '昔(むかし)から使(つか)われている布(ぬの)です。'],
+  ['gakubou', R, '学帽', 'がくぼう', '学生帽', 'まじめな学生(がくせい)の帽子(ぼうし)です。'],
+  ['kasa', R, '笠', 'かさ', '斗笠', '旅(たび)をする人(ひと)がかぶりました。'],
+  ['tengumen', R, '天狗の面', 'てんぐのめん', '天狗面具', '鼻(はな)の長(なが)い天狗(てんぐ)のお面(めん)です。'],
+  ['chonmage', R, 'ちょんまげ', 'ちょんまげ', '武士发髻', '昔(むかし)の侍(さむらい)の髪型(かみがた)です。'],
+  ['oukan', E, '王冠', 'おうかん', '王冠', '王様(おうさま)がかぶる冠(かんむり)です。'],
+  ['hanakanmuri', E, '花冠', 'はなかんむり', '花冠', '野原(のはら)の花(はな)で作(つく)りました。'],
+  ['tenshinowa', E, '天使の輪', 'てんしのわ', '天使光环', '頭(あたま)の上(うえ)で光(ひか)っています。'],
+  ['mahou', E, '魔法使いの帽子', 'まほうつかいのぼうし', '巫师帽', 'かぶると魔法(まほう)が使(つか)えるかも。'],
+  ['inari', L, '稲荷の狐耳', 'いなりのきつねみみ', '稻荷狐耳', '神社(じんじゃ)の狐(きつね)の力(ちから)をもらいました。'],
+  ['ryuunotsuno', L, '竜の角', 'りゅうのつの', '龙角', '空(そら)を飛(と)ぶ竜(りゅう)の角(つの)です。'],
+];
+
+const SCENES: Row[] = [
+  ['washitsu', C, '和室', 'わしつ', '和室', 'たたみの部屋(へや)は、いいにおいがします。'],
+  ['engawa', C, '縁側', 'えんがわ', '檐廊', '夏(なつ)は縁側(えんがわ)で風(かぜ)を感(かん)じます。'],
+  ['kyoushitsu', C, '放課後の教室', 'ほうかごのきょうしつ', '放学后的教室', '夕日(ゆうひ)が教室(きょうしつ)をオレンジ色(いろ)にします。'],
+  ['toshokan', R, '図書館', 'としょかん', '图书馆', '静(しず)かに本(ほん)を読(よ)みましょう。'],
+  ['dagashiya', R, '駄菓子屋', 'だがしや', '粗点心店', '百円(ひゃくえん)でたくさん買(か)えます。'],
+  ['sentou', R, '銭湯', 'せんとう', '公共澡堂', '大(おお)きなお風呂(ふろ)と富士山(ふじさん)の絵(え)。'],
+  ['yozakura', E, '夜桜', 'よざくら', '夜樱', '夜(よる)の桜(さくら)は、昼(ひる)とちがう美(うつく)しさです。'],
+  ['kumonoue', L, '雲の上の神社', 'くものうえのじんじゃ', '云上神社', '雲(くも)の上(うえ)に、だれも知(し)らない神社(じんじゃ)があります。'],
+];
+
+const FURNITURE: Row[] = [
+  ['zabuton', C, '座布団', 'ざぶとん', '坐垫', 'どうぞ、座(すわ)ってください。'],
+  ['chabudai', C, 'ちゃぶ台', 'ちゃぶだい', '矮圆桌', '家族(かぞく)でご飯(はん)を食(た)べるテーブルです。'],
+  ['hondana', C, '本棚', 'ほんだな', '书架', '好(す)きな本(ほん)を並(なら)べます。'],
+  ['kotatsu', R, 'こたつ', 'こたつ', '被炉', '一度(いちど)入(はい)ると、出(で)られません。'],
+  ['bonsai', R, '盆栽', 'ぼんさい', '盆栽', '小(ちい)さな木(き)を大切(たいせつ)に育(そだ)てます。'],
+  ['chouchin', R, '提灯', 'ちょうちん', '灯笼', 'やさしい光(ひかり)の明(あ)かりです。'],
+  ['kingyobachi', E, '金魚鉢', 'きんぎょばち', '金鱼缸', '金魚(きんぎょ)がすいすい泳(およ)いでいます。'],
+  ['kinbyoubu', L, '金屏風', 'きんびょうぶ', '金屏风', '金(きん)の屏風(びょうぶ)に、松(まつ)と鶴(つる)。'],
+];
+
+const make = (kind: ItemKind) => ([id, rarity, ja, kana, zh, line]: Row): Item => ({
+  id, kind, rarity, ja, kana, zh, line,
+  ...(kind === 'cat' ? { body: (SPRITE_META.cats as Record<string, { body: string }>)[id].body as Body } : {}),
+});
+
+export const ITEMS: Item[] = [...CATS.map(make('cat')), ...HATS.map(make('hat')), ...SCENES.map(make('scene')), ...FURNITURE.map(make('furniture'))];
 
 export const ITEM_BY_ID: Record<string, Item> = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
 
 export const STARTER_CAT = 'shiro';
+export const STARTER_SCENE = 'washitsu';
 
 /** 「白(しろ)い猫(ねこ)」→ 注音分段 */
 export function parseRubyLine(line: string): Array<{ text: string; reading?: string }> {

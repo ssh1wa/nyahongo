@@ -4,7 +4,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { getGame, onGame, type GameState } from '../lib/game';
 import { useNav } from '../nav';
 import { useColors, useTheme } from '../theme';
-import { PixelCat } from './PixelCat';
+import { CatPortrait } from '../game/Sprites';
 
 /** 订阅游戏状态 */
 export function useGame(): GameState | null {
@@ -43,7 +43,7 @@ export function Companion() {
   return (
     <Pressable onPress={nav.openCatRoom} hitSlop={6} style={styles.wrap} accessibilityLabel="猫の部屋">
       <Animated.View style={{ transform: [{ translateY: hop }] }}>
-        <PixelCat cat={game.equipped.cat} hat={game.equipped.hat} size={34} />
+        <CatPortrait id={game.room.cats[0].id} hat={game.room.cats[0].hat} size={32} />
       </Animated.View>
       {game.chests > 0 ? <View style={[styles.dot, { backgroundColor: c.accent, borderColor: c.bg }]} /> : null}
       {bubble ? (

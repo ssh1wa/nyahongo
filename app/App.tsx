@@ -6,6 +6,7 @@ import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markActive, setForeground, tick } from './src/lib/game';
 import { NavContext, type Nav, type TabId } from './src/nav';
+import { SpriteProvider } from './src/game/Sprites';
 import { CatRoomScreen } from './src/screens/CatRoomScreen';
 import { GrammarScreen } from './src/screens/GrammarScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
@@ -103,7 +104,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <Main />
+        <SpriteProvider>
+          <Main />
+        </SpriteProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

@@ -4,7 +4,7 @@
 // - 行为加分：做什么都有一点，每种每天有上限；复习不看对错，免得为了小判乱按评分
 // - 一天超过 SOFT_CAP 之后收益减半，鼓励每天学一点而不是一次刷很多
 // - 抽卡：普通 70 / 稀有 24 / 史诗 5 / 传说 1，10 抽必出稀有以上、50 抽必出史诗以上；重复转成毛玉，攒够换指定的
-import { ITEMS, ITEM_BY_ID, RARITY, RARITY_ORDER, STARTER_CAT, type Item, type Rarity } from './catalog';
+import { ITEMS, ITEM_BY_ID, RARITY, RARITY_ORDER, STARTER_CAT, STARTER_SCENE, type Item, type Rarity } from './catalog';
 import { kvGet, kvSet } from './db';
 
 export type Action = 'review' | 'word' | 'article' | 'listen' | 'grammar' | 'practice' | 'ask' | 'routine' | 'download' | 'firstOfDay';
@@ -33,14 +33,24 @@ const PITY_EPIC = 50;
 
 type Day = { date: string; seconds: number; points: number; counts: Partial<Record<Action, number>>; keys: string[] };
 
+/** 房间：一个场景、最多 3 只猫（第一只是右上角陪你学习的那只）、最多 4 件自由摆放的家具（x、y 是底边中点的房间坐标） */
+export type Room = {
+  scene: string;
+  cats: Array<{ id: string; hat: string | null }>;
+  furniture: Array<{ id: string; x: number; y: number }>;
+};
+
+export const ROOM_MAX_CATS = 3;
+export const ROOM_MAX_FURNITURE = 4;
+
 export type GameState = {
-  version: 1;
+  version: 2;
   coins: number; // 小数部分是减半后的零头，显示时取整
   chests: number;
   chestSeconds: number; // 距离下一个宝箱已经学了多少秒
   shards: number; // 毛玉
   owned: Record<string, number>;
-  equipped: { cat: string; hat: string | null };
+  room: Room;
   pity: { rare: number; epic: number };
   draws: number;
   today: Day;
@@ -53,10 +63,24 @@ export const localDate = (d = new Date()) =>
 const newDay = (): Day => ({ date: localDate(), seconds: 0, points: 0, counts: {}, keys: [] });
 
 const initial = (): GameState => ({
-  version: 1, coins: 0, chests: 1, chestSeconds: 0, shards: 0,
-  owned: { [STARTER_CAT]: 1 }, equipped: { cat: STARTER_CAT, hat: null },
+  version: 2, coins: 0, chests: 1, chestSeconds: 0, shards: 0,
+  owned: { [STARTER_CAT]: 1, [STARTER_SCENE]: 1 },
+  room: { scene: STARTER_SCENE, cats: [{ id: STARTER_CAT, hat: null }], furniture: [] },
   pity: { rare: 0, epic: 0 }, draws: 0, today: newDay(), history: [],
 });
+
+/** 旧版存档（只有 equipped 一只猫一件饰品）→ 房间 */
+function migrate(raw: any): GameState {
+  const s = { ...initial(), ...raw } as GameState & { equipped?: { cat: string; hat: string | null } };
+  if (!raw.room) {
+    const eq = raw.equipped ?? { cat: STARTER_CAT, hat: null };
+    s.room = { scene: STARTER_SCENE, cats: [{ id: ITEM_BY_ID[eq.cat] ? eq.cat : STARTER_CAT, hat: eq.hat && ITEM_BY_ID[eq.hat] ? eq.hat : null }], furniture: [] };
+    s.owned = { ...s.owned, [STARTER_SCENE]: s.owned[STARTER_SCENE] ?? 1 };
+  }
+  delete s.equipped;
+  s.version = 2;
+  return s;
+}
 
 // ---------- 状态读写：内存里一份，所有修改排队执行，避免并发覆盖 ----------
 
@@ -65,7 +89,7 @@ let queue: Promise<unknown> = Promise.resolve();
 const KEY = 'game';
 
 async function load(): Promise<GameState> {
-  if (!cache) cache = { ...initial(), ...(await kvGet<Partial<GameState>>(KEY, {})) } as GameState;
+  if (!cache) cache = migrate(await kvGet<Record<string, unknown>>(KEY, {}));
   rollDay(cache);
   return cache;
 }
@@ -239,10 +263,72 @@ export function exchange(id: string): Promise<Item> {
   });
 }
 
-export function equip(id: string | null, kind: 'cat' | 'hat'): Promise<void> {
+/** 测试用：直接加宝箱（设置 → 关于里长按版本号） */
+export function grantTestChests(n: number): Promise<void> {
+  return mutate((s) => { s.chests += n; });
+}
+
+// ---------- 房间布置 ----------
+
+const owns = (s: GameState, id: string) => !!s.owned[id];
+
+export function setScene(id: string): Promise<void> {
   return mutate((s) => {
-    if (id && !s.owned[id]) throw new Error('还没有这件');
-    if (kind === 'cat' && id) s.equipped.cat = id;
-    if (kind === 'hat') s.equipped.hat = id;
+    if (!owns(s, id) || ITEM_BY_ID[id]?.kind !== 'scene') throw new Error('还没有这个场景');
+    s.room = { ...s.room, scene: id };
+  });
+}
+
+/** 猫：在房间里就收起（至少留一只），不在就放进来（最多 3 只） */
+export function toggleRoomCat(id: string): Promise<'added' | 'removed'> {
+  return mutate((s) => {
+    if (!owns(s, id)) throw new Error('还没有这只猫');
+    const cats = s.room.cats;
+    if (cats.some((c) => c.id === id)) {
+      if (cats.length <= 1) throw new Error('房间里至少要有一只猫');
+      s.room = { ...s.room, cats: cats.filter((c) => c.id !== id) };
+      return 'removed';
+    }
+    if (cats.length >= ROOM_MAX_CATS) throw new Error(`房间里最多 ${ROOM_MAX_CATS} 只猫，先收起一只`);
+    s.room = { ...s.room, cats: [...cats, { id, hat: null }] };
+    return 'added';
+  });
+}
+
+/** 让这只猫当「陪你学习」的那只（排到第一个，右上角显示它） */
+export function setMainCat(id: string): Promise<void> {
+  return mutate((s) => {
+    if (!owns(s, id)) throw new Error('还没有这只猫');
+    const rest = s.room.cats.filter((c) => c.id !== id);
+    const me = s.room.cats.find((c) => c.id === id) ?? { id, hat: null };
+    s.room = { ...s.room, cats: [me, ...rest].slice(0, ROOM_MAX_CATS) };
+  });
+}
+
+/** 给房间里的一只猫戴饰品（一件饰品只能戴在一只猫身上），hat 为 null 是取下 */
+export function setCatHat(catId: string, hat: string | null): Promise<void> {
+  return mutate((s) => {
+    if (hat && !owns(s, hat)) throw new Error('还没有这件饰品');
+    s.room = { ...s.room, cats: s.room.cats.map((c) => (c.id === catId ? { ...c, hat } : c.hat === hat ? { ...c, hat: null } : c)) };
+  });
+}
+
+export function toggleFurniture(id: string, x = 80, y = 84): Promise<'added' | 'removed'> {
+  return mutate((s) => {
+    if (!owns(s, id)) throw new Error('还没有这件家具');
+    const list = s.room.furniture;
+    if (list.some((f) => f.id === id)) {
+      s.room = { ...s.room, furniture: list.filter((f) => f.id !== id) };
+      return 'removed';
+    }
+    if (list.length >= ROOM_MAX_FURNITURE) throw new Error(`最多摆 ${ROOM_MAX_FURNITURE} 件家具，先收起一件`);
+    s.room = { ...s.room, furniture: [...list, { id, x, y }] };
+    return 'added';
+  });
+}
+
+export function moveFurniture(id: string, x: number, y: number): Promise<void> {
+  return mutate((s) => {
+    s.room = { ...s.room, furniture: s.room.furniture.map((f) => (f.id === id ? { ...f, x: Math.round(x), y: Math.round(y) } : f)) };
   });
 }

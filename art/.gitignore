@@ -1,0 +1,5 @@
+# 生成出来的预览图，都能用 art/tools/ 下的脚本重新生成（App 用的素材在 app/assets/game/）
+*
+!.gitignore
+!tools/
+!tools/*.py
