@@ -13,6 +13,8 @@ import { deleteDict, downloadDict, localDictInfo, remoteDictInfo, type DictInfo 
 import { ATTRIBUTION as GRAMMAR_ATTRIBUTION } from '../lib/grammar';
 import { listModels, testModel, type ModelInfo } from '../lib/llm';
 import { getPcUrl, pingPc, setPcUrl } from '../lib/packages';
+import { kvGet, kvSet } from '../lib/db';
+import { lastSyncStatus, onSynced, syncNow, type SyncStatus } from '../lib/sync';
 import { deepseekSearch, loadOwnSearchKey, saveOwnSearchKey } from '../lib/search';
 import { DEFAULT_LLM, loadLlmSettings, saveLlmSettings, visionEndpoint, type Level, type LlmSettings } from '../lib/settings';
 import {
@@ -66,7 +68,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
           {tab === 'usage' ? <UsageSection /> : null}
           {tab === 'learn' ? <LearningSection /> : null}
           {tab === 'look' ? <AppearanceSection /> : null}
-          {tab === 'sync' ? <><PcSection /><DictSection /></> : null}
+          {tab === 'sync' ? <><PcSection /><DeviceSyncSection /><DictSection /></> : null}
           {tab === 'about' ? <AboutSection /> : null}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -670,6 +672,42 @@ function PcSection() {
         <Field label="电脑地址" value={pc} onChange={setPc} placeholder="例如 192.168.1.5:8765" url />
         <Button label="测试连接并保存" onPress={testPc} loading={testing} disabled={!pc.trim()} />
         {status ? <StatusLine ok={status.ok} text={status.text} /> : null}
+      </Card>
+    </>
+  );
+}
+
+// ---------- 多设备同步 ----------
+
+function DeviceSyncSection() {
+  const c = useColors();
+  const [auto, setAuto] = useState(true);
+  const [last, setLast] = useState<SyncStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void kvGet<boolean>('sync:auto', true).then(setAuto);
+    void lastSyncStatus().then(setLast);
+    return onSynced(setLast);
+  }, []);
+  const run = async () => {
+    setBusy(true);
+    try { setLast(await syncNow()); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <SectionLabel>多设备同步</SectionLabel>
+      <Card style={{ gap: 12 }}>
+        <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
+          手机、平板都连同一台电脑，生词本和复习进度、阅读和翻译记录、语法进度、精听学到哪一句、猫屋的小判和藏品会通过电脑合并同步。
+          API Key 和界面设置不同步，学习包每台设备自己下载。
+        </Text>
+        <Row label="自动同步" hint="打开 App、切回来、退到后台时，连得上电脑就同步一次">
+          <Segmented options={[{ value: 'on', label: '开' }, { value: 'off', label: '关' }]} value={auto ? 'on' : 'off'} onChange={(v) => { setAuto(v === 'on'); void kvSet('sync:auto', v === 'on'); }} />
+        </Row>
+        <Button label="立即同步" onPress={run} loading={busy} icon={<RefreshCw size={16} color={c.accentInk} />} />
+        {last ? <StatusLine ok={last.ok} text={`${new Date(last.at).toLocaleString()} · ${last.message}`} /> : (
+          <Text style={{ color: c.muted, fontSize: 12.5 }}>还没有同步过</Text>
+        )}
       </Card>
     </>
   );

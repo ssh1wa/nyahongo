@@ -10,5 +10,8 @@ pc/config.toml
 pc/workspace/
 pc/library/
 
+# 多设备同步的学习数据和备份
+pc/sync/
+
 # 词典数据（可重新下载生成）
 pc/data/

@@ -5,7 +5,8 @@
 // - 一天超过 SOFT_CAP 之后收益减半，鼓励每天学一点而不是一次刷很多
 // - 抽卡：普通 70 / 稀有 24 / 史诗 5 / 传说 1，10 抽必出稀有以上、50 抽必出史诗以上；重复转成毛玉，攒够换指定的
 import { ITEMS, ITEM_BY_ID, RARITY, RARITY_ORDER, STARTER_CAT, STARTER_SCENE, type Item, type Rarity } from './catalog';
-import { kvGet, kvSet } from './db';
+import { deviceId, kvGet, kvSet } from './db';
+import { maxLedger, type GameSync } from './syncMerge';
 
 export type Action = 'review' | 'word' | 'article' | 'listen' | 'grammar' | 'practice' | 'translate' | 'ask' | 'routine' | 'download' | 'firstOfDay';
 
@@ -46,8 +47,24 @@ export type Room = {
 export const ROOM_MAX_CATS = 3;
 export const ROOM_MAX_FURNITURE = 4;
 
+/**
+ * 多设备同步用的账本：每台设备只记自己赚了多少、花了多少（只增不减），合并时每台设备取最大值再加起来。
+ * 这样两台设备各自赚的小判都不会丢，也不会重复算。余额 = 初始值 + 所有设备（赚 - 花）。
+ */
+export type Ledger = {
+  coinsIn: number; coinsOut: number;
+  chestsIn: number; chestsOut: number;
+  shardsIn: number; shardsOut: number;
+  draws: number;
+  owned: Record<string, number>;
+  days: Record<string, { seconds: number; points: number }>; // 每天的学习时间和小判（最近 60 天）
+};
+
 export type GameState = {
   version: 2;
+  device: string;
+  ledger: Record<string, Ledger>;
+  roomAt: number; // 房间布置的修改时间：同步时以最新的为准
   coins: number; // 小数部分是减半后的零头，显示时取整
   chests: number;
   chestSeconds: number; // 距离下一个宝箱已经学了多少秒
@@ -66,15 +83,20 @@ export const localDate = (d = new Date()) =>
 
 const newDay = (): Day => ({ date: localDate(), seconds: 0, points: 0, counts: {}, keys: [] });
 
+// 新装 App 时就有的（不记在任何设备的账本里）
+const BASE = { coins: 0, chests: 1, shards: 0, owned: { [STARTER_CAT]: 1, [STARTER_SCENE]: 1 } as Record<string, number> };
+
+const emptyLedger = (): Ledger => ({ coinsIn: 0, coinsOut: 0, chestsIn: 0, chestsOut: 0, shardsIn: 0, shardsOut: 0, draws: 0, owned: {}, days: {} });
+
 const initial = (): GameState => ({
-  version: 2, coins: 0, chests: 1, chestSeconds: 0, shards: 0,
-  owned: { [STARTER_CAT]: 1, [STARTER_SCENE]: 1 },
+  version: 2, device: '', ledger: {}, roomAt: 0, coins: BASE.coins, chests: BASE.chests, chestSeconds: 0, shards: BASE.shards,
+  owned: { ...BASE.owned },
   room: { scene: STARTER_SCENE, cats: [{ id: STARTER_CAT, hat: null }], furniture: [] },
   pity: { rare: 0, epic: 0 }, draws: 0, today: newDay(), history: [], testReset1022: true,
 });
 
 /** 旧版存档（只有 equipped 一只猫一件饰品）→ 房间 */
-function migrate(raw: any): GameState {
+function migrate(raw: any, device: string): GameState {
   const s = { ...initial(), ...raw } as GameState & { equipped?: { cat: string; hat: string | null } };
   if (!raw.room) {
     const eq = raw.equipped ?? { cat: STARTER_CAT, hat: null };
@@ -93,7 +115,66 @@ function migrate(raw: any): GameState {
     s.pity = { rare: 0, epic: 0 };
   }
   s.testReset1022 = true;
+  s.device = device;
+  // 加同步之前的存档：现有的小判、宝箱、藏品都记到这台设备的账上
+  if (!raw.ledger) {
+    const l = emptyLedger();
+    track(l, { coins: BASE.coins, chests: BASE.chests, shards: BASE.shards, draws: 0, owned: BASE.owned }, totalsOf(s));
+    s.ledger = { [device]: l };
+  }
+  recordDays(s);
   return s;
+}
+
+type Totals = { coins: number; chests: number; shards: number; draws: number; owned: Record<string, number> };
+const totalsOf = (s: GameState): Totals => ({ coins: s.coins, chests: s.chests, shards: s.shards, draws: s.draws, owned: { ...s.owned } });
+
+/** 把一次修改前后的差额记到这台设备的账上 */
+function track(l: Ledger, before: Totals, after: Totals) {
+  const dc = after.coins - before.coins;
+  if (dc > 0) l.coinsIn += dc; else l.coinsOut -= dc;
+  const dch = after.chests - before.chests;
+  if (dch > 0) l.chestsIn += dch; else l.chestsOut -= dch;
+  const ds = after.shards - before.shards;
+  if (ds > 0) l.shardsIn += ds; else l.shardsOut -= ds;
+  l.draws += Math.max(0, after.draws - before.draws);
+  for (const [id, n] of Object.entries(after.owned)) {
+    const gained = n - (before.owned[id] ?? 0);
+    if (gained > 0) l.owned = { ...l.owned, [id]: (l.owned[id] ?? 0) + gained };
+  }
+}
+
+/** 这台设备每天的学习时间记进账本（同步给别的设备画图、算今天学了多久） */
+function recordDays(s: GameState) {
+  const l = (s.ledger[s.device] ??= emptyLedger());
+  const days = { ...l.days };
+  for (const d of [...s.history, s.today]) if (d.seconds || d.points) days[d.date] = { seconds: d.seconds, points: d.points };
+  l.days = Object.fromEntries(Object.entries(days).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 60));
+}
+
+/** 按账本重新算余额和藏品（合并了别的设备的账本之后用） */
+function recompute(s: GameState) {
+  const all = Object.values(s.ledger);
+  const sum = (f: (l: Ledger) => number) => all.reduce((n, l) => n + f(l), 0);
+  s.coins = BASE.coins + sum((l) => l.coinsIn - l.coinsOut);
+  s.chests = Math.max(0, BASE.chests + sum((l) => l.chestsIn - l.chestsOut));
+  s.shards = BASE.shards + sum((l) => l.shardsIn - l.shardsOut);
+  s.draws = sum((l) => l.draws);
+  const owned: Record<string, number> = { ...BASE.owned };
+  for (const l of all) for (const [id, n] of Object.entries(l.owned)) owned[id] = (owned[id] ?? 0) + n;
+  s.owned = owned;
+}
+
+/** 所有设备合起来每天的学习时间和小判（猫屋的统计图用） */
+export function dayTotals(s: GameState): Map<string, { seconds: number; points: number }> {
+  const out = new Map<string, { seconds: number; points: number }>();
+  for (const l of Object.values(s.ledger)) {
+    for (const [date, d] of Object.entries(l.days)) {
+      const cur = out.get(date) ?? { seconds: 0, points: 0 };
+      out.set(date, { seconds: cur.seconds + d.seconds, points: cur.points + d.points });
+    }
+  }
+  return out;
 }
 
 // ---------- 状态读写：内存里一份，所有修改排队执行，避免并发覆盖 ----------
@@ -103,7 +184,7 @@ let queue: Promise<unknown> = Promise.resolve();
 const KEY = 'game';
 
 async function load(): Promise<GameState> {
-  if (!cache) cache = migrate(await kvGet<Record<string, unknown>>(KEY, {}));
+  if (!cache) cache = migrate(await kvGet<Record<string, unknown>>(KEY, {}), await deviceId());
   rollDay(cache);
   return cache;
 }
@@ -117,10 +198,17 @@ function rollDay(s: GameState) {
   s.today = newDay();
 }
 
-function mutate<T>(fn: (s: GameState) => T): Promise<T> {
+function mutate<T>(fn: (s: GameState) => T, tracked = true): Promise<T> {
   const run = queue.then(async () => {
     const s = await load();
+    const before = totalsOf(s);
+    const room = JSON.stringify(s.room);
     const out = fn(s);
+    if (tracked) {
+      track((s.ledger[s.device] ??= emptyLedger()), before, totalsOf(s));
+      if (JSON.stringify(s.room) !== room) s.roomAt = Date.now();
+    }
+    recordDays(s);
     await kvSet(KEY, s);
     emit({ type: 'state', state: s });
     return out;
@@ -340,4 +428,31 @@ export function moveFurniture(id: string, x: number, y: number): Promise<void> {
   return mutate((s) => {
     s.room = { ...s.room, furniture: s.room.furniture.map((f) => (f.id === id ? { ...f, x: Math.round(x), y: Math.round(y) } : f)) };
   });
+}
+
+// ---------- 多设备同步 ----------
+
+
+export const gameSyncData = (): Promise<GameSync> =>
+  getGame().then((s) => ({ ledger: s.ledger, room: s.room, roomAt: s.roomAt }));
+
+/** 合并别的设备的账本和房间布置。每台设备的账只增不减，取最大值就是最新的 */
+export function mergeGameSync(remote: GameSync): Promise<void> {
+  return mutate((s) => {
+    for (const [dev, l] of Object.entries(remote.ledger ?? {})) {
+      if (dev === s.device) continue; // 自己的账本以本机为准
+      s.ledger[dev] = maxLedger(s.ledger[dev], { ...emptyLedger(), ...l });
+    }
+    recompute(s);
+    if (remote.room && remote.roomAt > s.roomAt) {
+      const ok = (id: string | null) => !id || !!s.owned[id];
+      s.room = {
+        scene: ok(remote.room.scene) ? remote.room.scene : s.room.scene,
+        cats: remote.room.cats.filter((c) => ok(c.id)).map((c) => ({ id: c.id, hat: ok(c.hat) ? c.hat : null })),
+        furniture: remote.room.furniture.filter((f) => ok(f.id)),
+      };
+      if (!s.room.cats.length) s.room.cats = [{ id: STARTER_CAT, hat: null }];
+      s.roomAt = remote.roomAt;
+    }
+  }, false);
 }

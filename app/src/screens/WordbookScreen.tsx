@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, EmptyState, ErrorNote, ScreenHeader, Segmented, SectionLabel, Tag, Title } from '../components/Ui';
 import { EntryView } from '../components/WordSheet';
+import { onSynced } from '../lib/sync';
 import { wordDetail } from '../lib/wordDetail';
 import {
   deleteWord, dueWords, GRADES, listWords, MASTERED_STABILITY_DAYS, previewIntervals, review, setMastered, stats,
@@ -29,6 +30,7 @@ export function WordbookScreen({ active }: { active: boolean }) {
   }, []);
   // 每次切到生词本都刷新：别的页面可能刚加了词
   useEffect(() => { if (active) void refresh(); }, [active, refresh]);
+  useEffect(() => onSynced((r) => { if (r.changes) void refresh(); }), [refresh]); // 别的设备同步过来的
 
   const begin = useCallback(async () => setQueue(await dueWords(100)), []);
 

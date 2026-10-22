@@ -91,6 +91,9 @@ export function downloadPackage(base: string, meta: PackageMeta, onProgress: (fr
       JSON.stringify({ ...localMeta, size_mb: meta.size_mb, has_thumb: files.some((f) => f.name === 'thumb.jpg') }),
       Date.now(),
     );
+    // 别的设备学过这个包（同步过来的进度），下载好就接着那里
+    const synced = (await kvGet<Record<string, { last_sentence: number; at: number }>>('sync:progress', {}))[meta.id];
+    if (synced) await db.runAsync('UPDATE packages SET last_sentence = ?, progress_at = ? WHERE id = ?', synced.last_sentence, synced.at, meta.id);
     award('download', meta.id);
     onProgress(1);
   })();
@@ -136,5 +139,5 @@ export function thumbUri(id: string): string | null {
 
 export async function saveProgress(id: string, sentence: number) {
   const db = await getDb();
-  await db.runAsync('UPDATE packages SET last_sentence = ? WHERE id = ?', sentence, id);
+  await db.runAsync('UPDATE packages SET last_sentence = ?, progress_at = ? WHERE id = ?', sentence, Date.now(), id);
 }

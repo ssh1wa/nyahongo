@@ -8,6 +8,7 @@ import {
   deleteLocal, downloadPackage, getPcUrl, listLocal, listRemote, thumbUri,
   type DownloadHandle, type LocalPackage,
 } from '../lib/packages';
+import { onSynced } from '../lib/sync';
 import type { PackageMeta } from '../lib/types';
 import { radius, useColors, useTheme } from '../theme';
 
@@ -49,6 +50,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
 
   // 每次切到这个标签都刷新（可能刚从播放器回来，进度变了）
   useEffect(() => { if (active) void refresh(); }, [active, refresh]);
+  useEffect(() => onSynced((r) => { if (r.changes) void refresh(); }), [refresh]); // 别的设备的精听进度
   useEffect(() => () => Object.values(handles.current).forEach((h) => h.cancel()), []);
 
   const download = (meta: PackageMeta) => {

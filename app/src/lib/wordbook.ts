@@ -1,6 +1,6 @@
 // 生词本 + FSRS 间隔复习。词条内容来自 JMdict（学习包里的 dictionary.json）；只有词典查不到的词才用 AI 释义，并标明「AI 释义」。
 import { createEmptyCard, fsrs, generatorParameters, Rating, TypeConvert, type Card, type Grade } from 'ts-fsrs';
-import { getDb } from './db';
+import { addTombstone, getDb } from './db';
 import { AI_ENTRY_ID } from './dict';
 import { award } from './game';
 import type { DictEntry, Sentence, Token } from './types';
@@ -9,6 +9,7 @@ const scheduler = fsrs(generatorParameters({ enable_fuzz: true, request_retentio
 
 export type WordRow = {
   id: number;
+  uid: string; // 跨设备认同一个词：词典词条 e123，没有词条的按写法 h:写法
   entry_id: number | null;
   headword: string;
   reading: string | null;
@@ -54,6 +55,8 @@ export const MASTERED_STABILITY_DAYS = 60;
 export const MASTERED_MIN_REPS = 4;
 const isMastered = (card: Card) => card.stability >= MASTERED_STABILITY_DAYS && card.reps >= MASTERED_MIN_REPS;
 
+export const wordUid = (entryId: number | null, headword: string) => (entryId != null ? `e${entryId}` : `h:${headword}`);
+
 export async function isSaved(entryId: number | undefined | null): Promise<boolean> {
   if (entryId == null) return false;
   const db = await getDb();
@@ -76,12 +79,14 @@ export async function addWord(w: NewWord): Promise<boolean> {
   const db = await getDb();
   // AI 释义的词条（id 0）不是词典词条，和没有词条的词一样按写法去重
   const entryId = w.entry && w.entry.id !== AI_ENTRY_ID ? w.entry.id : null;
-  if (entryId != null && (await isSaved(entryId))) return false;
-  if (entryId == null && (await db.getFirstAsync('SELECT 1 FROM words WHERE entry_id IS NULL AND headword = ?', w.headword))) return false;
+  const uid = wordUid(entryId, w.headword);
+  if (await db.getFirstAsync('SELECT 1 FROM words WHERE uid = ?', uid)) return false;
   const card = createEmptyCard(new Date());
+  const now = Date.now();
   await db.runAsync(
-    `INSERT INTO words (entry_id, headword, reading, entry, context, context_zh, package_id, clip_start, clip_end, card, due, added_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO words (uid, entry_id, headword, reading, entry, context, context_zh, package_id, clip_start, clip_end, card, due, added_at, updated_at, card_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    uid,
     entryId,
     w.headword,
     w.reading,
@@ -93,7 +98,9 @@ export async function addWord(w: NewWord): Promise<boolean> {
     w.clipEnd ?? null,
     JSON.stringify(card),
     card.due.getTime(),
-    Date.now(),
+    now,
+    now,
+    now,
   );
   award('word');
   return true;
@@ -190,8 +197,9 @@ export async function review(word: WordRow, grade: Grade): Promise<boolean> {
   const { card } = scheduler.next(word.card, now, grade);
   const mastered = isMastered(card);
   await db.withTransactionAsync(async () => {
-    await db.runAsync('UPDATE words SET card = ?, due = ?, mastered = ? WHERE id = ?', JSON.stringify(card), card.due.getTime(), mastered ? 1 : 0, word.id);
-    await db.runAsync('INSERT INTO review_log (word_id, rating, reviewed_at) VALUES (?, ?, ?)', word.id, grade, now.getTime());
+    await db.runAsync('UPDATE words SET card = ?, due = ?, mastered = ?, card_at = ?, updated_at = ? WHERE id = ?',
+      JSON.stringify(card), card.due.getTime(), mastered ? 1 : 0, now.getTime(), now.getTime(), word.id);
+    await db.runAsync('INSERT OR IGNORE INTO review_log (word_id, word_uid, rating, reviewed_at) VALUES (?, ?, ?, ?)', word.id, word.uid, grade, now.getTime());
   });
   award('review'); // 不看评分，免得为了小判乱按
   return mastered;
@@ -200,16 +208,20 @@ export async function review(word: WordRow, grade: Grade): Promise<boolean> {
 /** 手动在「生词」和「已掌握」之间移动。移回生词时，明天就会出现在复习里 */
 export async function setMastered(id: number, mastered: boolean): Promise<void> {
   const db = await getDb();
-  if (mastered) await db.runAsync('UPDATE words SET mastered = 1 WHERE id = ?', id);
-  else await db.runAsync('UPDATE words SET mastered = 0, due = MIN(due, ?) WHERE id = ?', Date.now() + 86_400_000, id);
+  const now = Date.now();
+  if (mastered) await db.runAsync('UPDATE words SET mastered = 1, card_at = ?, updated_at = ? WHERE id = ?', now, now, id);
+  else await db.runAsync('UPDATE words SET mastered = 0, due = MIN(due, ?), card_at = ?, updated_at = ? WHERE id = ?', now + 86_400_000, now, now, id);
 }
 
 export async function saveDetail(id: number, detail: WordDetail): Promise<void> {
   const db = await getDb();
-  await db.runAsync('UPDATE words SET detail = ? WHERE id = ?', JSON.stringify(detail), id);
+  await db.runAsync('UPDATE words SET detail = ?, updated_at = ? WHERE id = ?', JSON.stringify(detail), Date.now(), id);
 }
 
 export async function deleteWord(id: number): Promise<void> {
   const db = await getDb();
+  const row = await db.getFirstAsync<{ uid: string }>('SELECT uid FROM words WHERE id = ?', id);
   await db.runAsync('DELETE FROM words WHERE id = ?', id);
+  await db.runAsync('DELETE FROM review_log WHERE word_id = ?', id);
+  if (row?.uid) await addTombstone('word', row.uid);
 }

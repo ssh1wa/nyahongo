@@ -4,6 +4,10 @@ import { loadLlmSettings, visionEndpoint } from './settings';
 
 export type UsageKind = 'text' | 'vision' | 'search' | 'fetch';
 
+// 本机的用量 + 同步过来的其他设备的用量（usage_remote）
+const ALL_USAGE = `(SELECT day, kind, model, calls, input, output FROM usage
+  UNION ALL SELECT day, kind, model, calls, input, output FROM usage_remote)`;
+
 const localDay = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -30,7 +34,7 @@ export async function localUsage(range: UsageRange): Promise<UsageTotal[]> {
   const db = await getDb();
   return db.getAllAsync<UsageTotal>(
     `SELECT kind, model, SUM(calls) AS calls, SUM(input) AS input, SUM(output) AS output
-     FROM usage WHERE day >= ? GROUP BY kind, model ORDER BY kind, calls DESC`,
+     FROM ${ALL_USAGE} WHERE day >= ? GROUP BY kind, model ORDER BY kind, calls DESC`,
     from,
   );
 }
@@ -40,7 +44,7 @@ export async function dailyCalls(days = 14): Promise<Array<{ day: string; calls:
   const db = await getDb();
   const from = localDay(new Date(Date.now() - (days - 1) * 86400000));
   const rows = await db.getAllAsync<{ day: string; calls: number }>(
-    'SELECT day, SUM(calls) AS calls FROM usage WHERE day >= ? GROUP BY day', from,
+    `SELECT day, SUM(calls) AS calls FROM ${ALL_USAGE} WHERE day >= ? GROUP BY day`, from,
   );
   const map = new Map(rows.map((r) => [r.day, r.calls]));
   return Array.from({ length: days }, (_, i) => {

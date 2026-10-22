@@ -11,7 +11,7 @@ import { RoomView } from '../game/Room';
 import { CatPortrait, ChestAnimation, ItemIcon, SceneThumb } from '../game/Sprites';
 import { ITEMS, ITEM_BY_ID, KIND_LABEL, parseRubyLine, RARITY, type Item, type ItemKind } from '../lib/catalog';
 import {
-  ACTIONS, CHEST_SECONDS, DRAW_COST, draw, exchange, MINUTE_POINTS, moveFurniture, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
+  ACTIONS, CHEST_SECONDS, dayTotals, DRAW_COST, draw, exchange, MINUTE_POINTS, moveFurniture, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
   localDate, setScene, SOFT_CAP, toggleFurniture, toggleRoomCat, type Action, type DrawResult, type GameState,
 } from '../lib/game';
 import { CONTENT_MAX, radius, useColors } from '../theme';
@@ -437,10 +437,12 @@ function InfoSheet({ title, onClose, children }: { title: string; onClose: () =>
 function Today({ game }: { game: GameState }) {
   const c = useColors();
   // 固定 14 个日历日（没学习的那天是空柱），不然只有两天记录时两根柱子会被拉得很宽
-  const byDate = new Map([game.today, ...game.history].map((d) => [d.date, d.seconds]));
+  // 所有设备加起来（同步过来的别的设备也算）
+  const totals = dayTotals(game);
+  const today = totals.get(game.today.date) ?? { seconds: game.today.seconds, points: game.today.points };
   const days = Array.from({ length: 14 }, (_, i) => {
     const date = localDate(new Date(Date.now() - (13 - i) * 86400000));
-    return { date, seconds: byDate.get(date) ?? 0 };
+    return { date, seconds: totals.get(date)?.seconds ?? 0 };
   });
   const max = Math.max(60, ...days.map((d) => d.seconds));
   const counts = Object.entries(game.today.counts).filter(([k, v]) => v && k !== 'firstOfDay') as Array<[Action, number]>;
@@ -449,11 +451,11 @@ function Today({ game }: { game: GameState }) {
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: c.muted, fontSize: 12 }}>今天有效学习</Text>
-          <Text style={{ color: c.ink, fontSize: 24, fontWeight: '800' }}>{Math.floor(game.today.seconds / 60)} 分钟</Text>
+          <Text style={{ color: c.ink, fontSize: 24, fontWeight: '800' }}>{Math.floor(today.seconds / 60)} 分钟</Text>
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: c.muted, fontSize: 12 }}>今天得到</Text>
-          <Text style={{ color: c.ink, fontSize: 24, fontWeight: '800' }}>{coins(game.today.points)} 小判</Text>
+          <Text style={{ color: c.ink, fontSize: 24, fontWeight: '800' }}>{coins(today.points)} 小判</Text>
         </View>
       </View>
       {counts.length ? (

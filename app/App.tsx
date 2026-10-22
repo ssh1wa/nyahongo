@@ -2,9 +2,10 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { BookMarked, BookOpenText, GraduationCap, Headphones, Languages } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, ToastAndroid, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markActive, setForeground, tick } from './src/lib/game';
+import { autoSync, onSynced } from './src/lib/sync';
 import { NavContext, type Nav, type TabId } from './src/nav';
 import { SpriteProvider } from './src/game/Sprites';
 import { SelectionProvider } from './src/components/Selection';
@@ -44,9 +45,16 @@ function Main() {
   // 有效学习计时：前台 + 最近有操作。纯净模式下也照常记（只是不显示）
   useEffect(() => {
     markActive();
-    const sub = AppState.addEventListener('change', (s) => { setForeground(s === 'active'); if (s === 'active') markActive(); });
+    // 多设备同步：打开时、切回来时拉取别的设备的进度，退到后台时把这台的推上去
+    void autoSync();
+    const sub = AppState.addEventListener('change', (s) => {
+      setForeground(s === 'active');
+      if (s === 'active') markActive();
+      if (s === 'active' || s === 'background') void autoSync();
+    });
+    const off = onSynced((r) => { if (r.ok && r.changes) ToastAndroid.show(`已从其他设备同步 ${r.changes} 项`, ToastAndroid.SHORT); });
     const timer = setInterval(() => tick(15), 15000);
-    return () => { sub.remove(); clearInterval(timer); };
+    return () => { sub.remove(); off(); clearInterval(timer); };
   }, []);
 
   const goTab = useCallback((t: TabId) => {

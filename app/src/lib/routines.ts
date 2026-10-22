@@ -1,13 +1,14 @@
 // 常读：保存下来的写作要求（比如「每天一篇科普」「今天的新闻」），每天点一次用同一个提示词写一篇新的
-import { kvGet, kvSet } from './db';
+import { addTombstone, kvGet, kvSet } from './db';
 import { award } from './game';
-import { getRecord } from './records';
+import { getRecord, getRecordByUid } from './records';
 import {
   generateArticle, researchAndWrite, saveArticle, splitArticle, type Article, type ArticleLength, type ResearchStage,
 } from './reading';
 import { loadLlmSettings } from './settings';
 
-export type RoutineEntry = { date: string; title: string; subject?: string; urls: string[]; articleId: number };
+// articleId 是本机的记录 id；articleUid 跨设备不变（同步过来的文章本机 id 不一样，按 uid 找）
+export type RoutineEntry = { date: string; title: string; subject?: string; urls: string[]; articleId: number; articleUid?: string };
 
 export type Routine = {
   id: string;
@@ -37,13 +38,14 @@ export async function addRoutine(r: Pick<Routine, 'name' | 'prompt' | 'length' |
 
 export async function deleteRoutine(id: string): Promise<void> {
   await saveAll((await listRoutines()).filter((r) => r.id !== id));
+  await addTombstone('routine', id);
 }
 
 /** 今天已经写过的那篇（被删掉了就当没写过）。 */
 export async function todaysArticle(r: Routine): Promise<{ id: number; article: Article } | null> {
   const entry = r.history.find((h) => h.date === localDate());
   if (!entry) return null;
-  const row = await getRecord<Article>(entry.articleId);
+  const row = (entry.articleUid ? await getRecordByUid<Article>(entry.articleUid) : null) ?? (await getRecord<Article>(entry.articleId));
   return row ? { id: row.id, article: row.data } : null;
 }
 
@@ -69,10 +71,11 @@ export async function writeToday(
     references: out.references.length ? out.references : undefined,
   };
   const id = await saveArticle(article);
+  const saved = await getRecord<Article>(id);
 
   // 重新读一遍再写，避免覆盖生成期间对别的常读做的改动
   const list = await listRoutines();
-  const entry: RoutineEntry = { date: localDate(), title: out.title, subject: out.subject || undefined, urls: out.references.map((x) => x.url), articleId: id };
+  const entry: RoutineEntry = { date: localDate(), title: out.title, subject: out.subject || undefined, urls: out.references.map((x) => x.url), articleId: id, articleUid: saved?.uid };
   await saveAll(list.map((r) => (r.id === routine.id ? { ...r, history: [entry, ...r.history].slice(0, HISTORY_LIMIT) } : r)));
   award('routine', routine.id);
   return { id, article };

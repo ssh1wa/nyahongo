@@ -45,6 +45,7 @@ class LlmConfig:
 class Config:
     workspace: Path = PC_ROOT / "workspace"  # 下载的原始文件
     library: Path = PC_ROOT / "library"  # 生成的学习包，手机从这里同步
+    sync: Path = PC_ROOT / "sync"  # 多设备同步的学习数据（生词、进度、小游戏）和备份
     ffmpeg: str = ""
     download: DownloadConfig = field(default_factory=DownloadConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -76,6 +77,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         cfg.workspace = (PC_ROOT / paths["workspace"]).resolve()
     if "library" in paths:
         cfg.library = (PC_ROOT / paths["library"]).resolve()
+    if "sync" in paths:
+        cfg.sync = (PC_ROOT / paths["sync"]).resolve()
     cfg.ffmpeg = data.get("ffmpeg", {}).get("path", "")
     for key, value in data.get("download", {}).items():
         setattr(cfg.download, key, value)

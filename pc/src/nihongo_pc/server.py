@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from .config import load_config
 from .dictionary import ATTRIBUTION
 from .package import make_thumbnail
-from . import phone_dict
+from . import phone_dict, sync
 from .download import expand_playlist, is_url
 from .pipeline import STAGES, Options, PackageExists, run
 
@@ -39,6 +39,8 @@ LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 REMOTE_ALLOWED = re.compile(
     r"^/api/(ping|dictionary(/file)?|library(/[\w\-]+(/(files(/[\w.\-]+)?|thumb|media))?)?)$"
 )
+# 其他设备唯一能写的：多设备同步（旧版本都有备份）
+REMOTE_SYNC = "/api/sync"
 
 app = FastAPI(title="日语学习包")
 _lan = {"enabled": False, "port": 8765}
@@ -47,7 +49,7 @@ _lan = {"enabled": False, "port": 8765}
 @app.middleware("http")
 async def lan_read_only(request: Request, call_next):
     client = request.client.host if request.client else ""
-    if client not in LOCAL_HOSTS:
+    if client not in LOCAL_HOSTS and not (request.url.path == REMOTE_SYNC and request.method in ("GET", "PUT")):
         if request.method not in ("GET", "HEAD") or not REMOTE_ALLOWED.match(request.url.path):
             return JSONResponse({"detail": "其他设备只能读取学习包"}, status_code=403)
     return await call_next(request)
@@ -79,6 +81,25 @@ def ping() -> dict:
 def lan_info() -> dict:
     port = _lan["port"]
     return {"enabled": _lan["enabled"], "urls": [f"http://{a}:{port}" for a in lan_addresses()]}
+
+
+# ---------- 多设备同步 ----------
+
+@app.get("/api/sync")
+def get_sync() -> dict:
+    return sync.load(load_config().sync)
+
+
+@app.put("/api/sync")
+async def put_sync(request: Request) -> dict:
+    body = await request.json()
+    if not isinstance(body, dict) or not isinstance(body.get("doc"), dict) or not isinstance(body.get("base"), int):
+        raise HTTPException(400, "同步数据格式不对")
+    try:
+        version = sync.save(load_config().sync, body["base"], body["doc"], str(body.get("device", ""))[:64])
+    except sync.VersionConflict as e:
+        return JSONResponse({"detail": str(e), "version": e.current}, status_code=409)
+    return {"version": version}
 
 
 # ---------- 学习库 ----------
