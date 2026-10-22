@@ -79,8 +79,9 @@ export async function addWord(w: NewWord): Promise<boolean> {
 export function addFromToken(token: Token, entry: DictEntry | null, sentence: Sentence, packageId: string): Promise<boolean> {
   return addWord({
     entry,
-    headword: entry ? entry.kanji[0] || entry.readings[0] : token.base,
-    reading: entry ? entry.readings[0] ?? null : token.reading,
+    headword: entry ? entry.kanji[0] || entry.readings[0] : token.base ?? token.surface,
+    // 英语单词存音标当「读音」
+    reading: entry?.phonetic ? `/${entry.phonetic}/` : entry ? entry.readings[0] ?? null : token.reading ?? null,
     context: sentence.text,
     contextZh: sentence.zh,
     packageId,

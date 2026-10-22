@@ -5,7 +5,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { award } from '../lib/game';
 import { requestJson } from '../lib/llm';
-import { followUpPrompt, shapeFollowUp, type FollowUp } from '../lib/prompts';
+import { englishFollowUpPrompt, followUpPrompt, shapeFollowUp, type FollowUp } from '../lib/prompts';
 import { loadLlmSettings } from '../lib/settings';
 import type { DictEntry, Sentence } from '../lib/types';
 import { addFromToken, isSaved } from '../lib/wordbook';
@@ -35,8 +35,8 @@ export function EntryView({ entry }: { entry: DictEntry }) {
   );
 }
 
-export function WordSheet({ sentence, tokenIndex, dictionary, packageId, onClose }: {
-  sentence: Sentence; tokenIndex: number; dictionary: Record<string, DictEntry>; packageId: string; onClose: () => void;
+export function WordSheet({ sentence, tokenIndex, dictionary, packageId, english = false, onClose }: {
+  sentence: Sentence; tokenIndex: number; dictionary: Record<string, DictEntry>; packageId: string; english?: boolean; onClose: () => void;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -51,7 +51,7 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, onClose
 
   useEffect(() => { isSaved(entry?.id).then(setSaved); }, [entry?.id]);
 
-  const head = entry ? entry.kanji[0] || entry.readings[0] : token.base;
+  const head = entry ? entry.kanji[0] || entry.readings[0] : token.base ?? token.surface;
   const save = async () => {
     const added = await addFromToken(token, entry, sentence, packageId);
     setSaved(true);
@@ -64,7 +64,7 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, onClose
     try {
       const settings = await loadLlmSettings();
       const reply = await requestJson(settings, [
-        { role: 'system', content: followUpPrompt('sentence') },
+        { role: 'system', content: english ? englishFollowUpPrompt : followUpPrompt('sentence') },
         {
           role: 'user',
           content: JSON.stringify({
@@ -95,10 +95,10 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, onClose
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <Text style={{ color: c.ink, fontSize: 28, fontWeight: '800' }}>{head}</Text>
-              <Text style={{ color: c.ruby, fontSize: 16 }}>{entry ? entry.readings.slice(0, 3).join('、') : token.reading ?? ''}</Text>
+              <Text style={{ color: c.ruby, fontSize: 16 }}>{entry?.phonetic ? `/${entry.phonetic}/` : entry ? entry.readings.slice(0, 3).join('、') : token.reading ?? ''}</Text>
               {entry?.common ? <Tag label="常用词" tone="ok" /> : null}
             </View>
-            {token.surface !== head ? <Text style={{ color: c.muted, fontSize: 12.5 }}>原文中的形式：{token.surface}</Text> : null}
+            {token.surface.toLowerCase() !== String(head).toLowerCase() ? <Text style={{ color: c.muted, fontSize: 12.5 }}>原文中的形式：{token.surface}</Text> : null}
           </View>
           <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>
         </View>

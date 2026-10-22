@@ -168,6 +168,13 @@ export function shapeGrade(raw: any): PracticeGrade {
 
 export type FollowUp = { question: string; answer: string; examples: Example[] };
 
+/** 英语学习包（测试版）里追问一句话或一个词：用英语老师的身份，例句是英文，不需要注音 */
+export const englishFollowUpPrompt = `You are a rigorous English tutor for a Chinese-speaking learner who is watching an English video (TV series, podcast, etc.).
+Answer the learner's question about the supplied English sentence and word in clear Simplified Chinese, grounded in the context: meaning in this context, usage, slang or idioms, grammar, and nuance.
+Return JSON only:
+{"answer":"清晰具体的中文回答","examples":[{"japanese":[{"text":"English example sentence","reading":null}],"chinese":"中文含义"}]}
+Use 0-3 short, natural English examples (put the English sentence in "japanese"[0].text; "reading" must be null).`;
+
 export const followUpPrompt = (kind: 'translation' | 'practice' | 'sentence') => `You are a rigorous Japanese tutor answering a learner's follow-up question about the ${
   kind === 'translation' ? 'translation and its analysis' : kind === 'practice' ? 'exercise, the learner answer and grading' : 'Japanese sentence from a video the learner is studying'
 } supplied in the user context.

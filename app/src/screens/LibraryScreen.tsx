@@ -10,12 +10,13 @@ import {
 } from '../lib/packages';
 import type { PackageMeta } from '../lib/types';
 import { countDue } from '../lib/wordbook';
-import { radius, useColors } from '../theme';
+import { radius, useColors, useTheme } from '../theme';
 
 const fmtDuration = (sec: number) => (sec < 60 ? `${Math.max(1, Math.round(sec))} 秒` : `${Math.round(sec / 60)} 分钟`);
 
 export function LibraryScreen({ active }: { active: boolean }) {
   const c = useColors();
+  const { prefs } = useTheme();
   const nav = useNav();
   const onOpen = nav.openPlayer;
   const onGoSettings = nav.openSettings;
@@ -76,9 +77,11 @@ export function LibraryScreen({ active }: { active: boolean }) {
     ]);
   };
 
+  // 英语学习包是测试版功能：没开就不显示
+  const visible = <T extends { lang?: string }>(list: T[]) => list.filter((p) => prefs.beta || p.lang !== 'en');
   const localIds = new Map(local.map((p) => [p.id, p]));
   // 电脑上新的、或者电脑端重新处理过（created_at 变了）的学习包
-  const available = (remote ?? []).filter((m) => localIds.get(m.id)?.created_at !== m.created_at);
+  const available = visible(remote ?? []).filter((m) => localIds.get(m.id)?.created_at !== m.created_at);
 
   return (
     <ScrollView
@@ -98,7 +101,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
       ) : null}
 
       <SectionLabel>手机上的学习包</SectionLabel>
-      {local.length ? local.map((p) => {
+      {visible(local).length ? visible(local).map((p) => {
         const thumb = thumbUri(p.id);
         const pct = p.sentence_count ? Math.round(((p.last_sentence + 1) / p.sentence_count) * 100) : 0;
         return (
@@ -112,6 +115,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
                 <View style={styles.tags}>
                   <Tag label={fmtDuration(p.duration)} />
                   <Tag label={`${p.sentence_count} 句`} />
+                  {p.lang === 'en' ? <Tag label="英语" tone="accent" /> : null}
                   {p.refined_by ? <Tag label="AI 校对" tone="ok" /> : null}
                   {p.last_sentence > 0 ? <Tag label={`学到 ${pct}%`} tone="accent" /> : null}
                 </View>
@@ -151,6 +155,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
                 <View style={styles.tags}>
                   <Tag label={fmtDuration(m.duration)} />
                   <Tag label={`${m.size_mb ?? '?'} MB`} />
+                  {m.lang === 'en' ? <Tag label="英语" tone="accent" /> : null}
                   {update ? <Tag label="电脑端已更新" tone="accent" /> : null}
                 </View>
                 {p !== undefined ? (

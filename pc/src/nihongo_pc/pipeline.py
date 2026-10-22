@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from . import english
 from .config import Config
 from .dictionary import Dictionary, entry_for_package
 from .download import download, is_url, parse_vtt
@@ -43,6 +44,7 @@ class Options:
     overwrite: bool = False
     refine: bool = True  # 配置了 AI 接口时做校对、翻译和读音检查
     title: str | None = None  # 本地文件可以指定标题
+    lang: str = "ja"  # ja / en（英语模式，测试版：双语字幕 + 点词查词，不逐词拆解）
 
 
 @dataclass
@@ -74,6 +76,21 @@ def _refine_text_cached(cfg: Config, pkg_id: str, sentences: list[dict], on_prog
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(refined, ensure_ascii=False), encoding="utf-8")
     return refined
+
+
+def _translate_en_cached(cfg: Config, pkg_id: str, sentences: list[dict], on_progress) -> list[dict]:
+    """英语翻译结果同样按"原文 + 模型"缓存。"""
+    digest = hashlib.sha1(
+        ("\n".join(s["text"] for s in sentences) + cfg.llm.model + "en-zh").encode("utf-8")
+    ).hexdigest()[:12]
+    cache = cfg.workspace / "refined" / f"{pkg_id}.{digest}.json"
+    if cache.exists():
+        on_progress(1)
+        return json.loads(cache.read_text(encoding="utf-8"))
+    out = english.translate(sentences, cfg.llm, on_progress)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    return out
 
 
 _dictionary: Dictionary | None = None
@@ -117,34 +134,40 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         title, url, sid, sub = opts.title or media.stem, "", f"local_{media.stem}", None
     progress(0, 1, title)
 
-    pkg_dir = cfg.library / package_id(sid)
+    en = opts.lang == "en"
+    # 同一个视频可以日语、英语各做一份，不互相覆盖
+    pkg_dir = cfg.library / package_id(sid + ("_en" if en else ""))
     if package_exists(cfg, pkg_dir.name) and not opts.overwrite:
         raise PackageExists(pkg_dir.name)
     pkg_dir.mkdir(parents=True, exist_ok=True)
 
-    if sub and not opts.force_whisper:
+    if sub and not opts.force_whisper and not en:  # 网站字幕只下载了日语的
         progress(1, 1, "使用网站提供的人工日语字幕")
         sentences, sub_source, model = parse_vtt(sub), "manual", None
     else:
         model, sub_source = cfg.whisper.model, "whisper"
         # 原始转写按模型缓存，改断句规则后重跑不用再转写
-        cache = cfg.workspace / "transcripts" / f"{pkg_dir.name}.{package_id(model)}.json"
+        cache = cfg.workspace / "transcripts" / f"{pkg_dir.name}.{package_id(model)}{'.en' if en else ''}.json"
         if cache.exists() and not opts.retranscribe:
             raw = json.loads(cache.read_text(encoding="utf-8"))
             progress(1, 1, "使用已缓存的转写结果")
         else:
             progress(1, 0, "加载 Whisper 模型")
-            raw = transcribe(media, cfg.whisper, on_progress=lambda f: progress(1, f, "识别语音"))
+            raw = transcribe(media, cfg.whisper, on_progress=lambda f: progress(1, f, "识别语音"), language=opts.lang)
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
             progress(1, 1, "转写完成")
-        sentences = split_sentences(raw)
+        sentences = english.split_sentences(raw) if en else split_sentences(raw)
     if not sentences:
-        raise PipelineError("没有识别到任何日语句子")
+        raise PipelineError("没有识别到任何英语句子" if en else "没有识别到任何日语句子")
 
     use_llm = opts.refine and bool(cfg.llm.key() and cfg.llm.model)
     refined_by = None
-    if use_llm:
+    if use_llm and en:
+        sentences = _translate_en_cached(cfg, pkg_dir.name, sentences, lambda f: progress(2, f, "整句翻译成中文"))
+        refined_by = cfg.llm.model
+        progress(2, 1, f"翻译了 {sum(1 for s in sentences if s.get('zh'))} 句")
+    elif use_llm:
         sentences = _refine_text_cached(cfg, pkg_dir.name, sentences,
                                         lambda f: progress(2, f, "加标点、校对错字、整句翻译"))
         refined_by = cfg.llm.model
@@ -153,12 +176,17 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         progress(2, 1, "跳过（没有配置 AI 接口）" if opts.refine else "跳过")
 
     progress(3, 0, f"分词 {len(sentences)} 句")
-    for s in sentences:
-        s["tokens"] = tokenize(s["text"])
-    if use_llm:
-        fixed = refine_readings(sentences, cfg.llm, lambda f: progress(3, f * 0.4, "AI 检查读音"))
-        progress(3, 0.4, f"修正了 {fixed} 处读音")
-    dictionary = _attach_dictionary(cfg, sentences, use_llm, lambda f, msg: progress(3, 0.4 + f * 0.6, msg))
+    if en:
+        for s in sentences:
+            s["tokens"] = english.tokenize(s["text"])
+        dictionary = english.attach_dictionary(sentences, lambda f, msg: progress(3, f, msg))
+    else:
+        for s in sentences:
+            s["tokens"] = tokenize(s["text"])
+        if use_llm:
+            fixed = refine_readings(sentences, cfg.llm, lambda f: progress(3, f * 0.4, "AI 检查读音"))
+            progress(3, 0.4, f"修正了 {fixed} 处读音")
+        dictionary = _attach_dictionary(cfg, sentences, use_llm, lambda f, msg: progress(3, 0.4 + f * 0.6, msg))
     subtitles = build_subtitles(sentences, sub_source)
     progress(3, 1, f"{len(sentences)} 句 · {len(dictionary)} 个词条")
 
@@ -174,7 +202,7 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         make_thumbnail(packed, pkg_dir, cfg.ffmpeg_path())
     write_package(pkg_dir, media=packed, title=title, source_url=url,
                   subtitles=subtitles, whisper_model=model,
-                  dictionary=dictionary, refined_by=refined_by)
+                  dictionary=dictionary, refined_by=refined_by, lang=opts.lang)
     progress(4, 1, "完成")
 
     size = sum(f.stat().st_size for f in pkg_dir.iterdir()) / 1024 / 1024

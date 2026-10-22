@@ -2,14 +2,17 @@
 
 export type FuriganaSegment = { text: string; reading?: string | null };
 
+// 日语学习包的 token 有 base / reading / pos / furigana；英语学习包（测试版）只有 surface，
+// 单词带 word: true，空格和标点也是 token（按顺序拼回原句）
 export type Token = {
   surface: string;
-  base: string;
+  base?: string;
   norm?: string;
-  reading: string | null;
-  pos: string;
-  furigana: FuriganaSegment[];
-  dict?: number; // JMdict 词条 id
+  reading?: string | null;
+  pos?: string;
+  furigana?: FuriganaSegment[];
+  word?: boolean;
+  dict?: number; // 词条 id：JMdict，英语是 ECDICT（加了 5000 万的偏移）
 };
 
 export type Sentence = {
@@ -30,6 +33,7 @@ export type DictEntry = {
   readings: string[];
   common: boolean;
   senses: DictSense[];
+  phonetic?: string; // 英语词条的音标
 };
 
 export type PackageMeta = {
@@ -46,6 +50,7 @@ export type PackageMeta = {
   created_at: string;
   size_mb?: number;
   has_thumb?: boolean;
+  lang?: 'ja' | 'en'; // 没有就是日语；en 是英语模式（测试版）
 };
 
 export type PackageData = {

@@ -56,6 +56,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const { meta, sentences, dictionary } = data;
   const isVideo = meta.media_type === 'video';
+  const english = meta.lang === 'en'; // 英语模式（测试版）：双语字幕，没有注音
   const hasZh = useMemo(() => sentences.some((s) => s.zh), [sentences]);
 
   const player = useVideoPlayer(mediaUri(meta), (p) => {
@@ -249,7 +250,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
       </View>
       <View style={styles.chips}>
         <Chip label={`${rate}×`} onPress={cycleRate} />
-        <Chip label={showRuby ? '注音 开' : '注音 关'} onPress={() => toggle('player.ruby', !showRuby, setShowRuby)} />
+        {english ? null : <Chip label={showRuby ? '注音 开' : '注音 关'} onPress={() => toggle('player.ruby', !showRuby, setShowRuby)} />}
         {hasZh ? <Chip label={zhLabel} onPress={cycleZh} /> : null}
         <Text style={{ color: c.muted, fontSize: 11.5 }}>{loop ? '单句循环中' : autoPause ? '每句读完暂停' : ''}</Text>
       </View>
@@ -276,6 +277,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
           tokenIndex={word.token}
           dictionary={dictionary}
           packageId={meta.id}
+          english={english}
           onClose={() => setWord(null)}
         />
       ) : null}

@@ -563,6 +563,9 @@ function LearningSection() {
         <Row label="小猫和收集小游戏" hint="学习得小判、开宝箱收集猫和装扮。关掉就是纯净模式">
           <Segmented options={[{ value: 'on', label: '开' }, { value: 'off', label: '纯净' }]} value={prefs.companion ? 'on' : 'off'} onChange={(v) => setPrefs({ companion: v === 'on' })} />
         </Row>
+        <Row label="启用测试版功能" hint="英语模式：电脑端选「英语（测试版）」处理的视频，做成中英双语字幕，点单词查英汉词典">
+          <Segmented options={[{ value: 'off', label: '关' }, { value: 'on', label: '开' }]} value={prefs.beta ? 'on' : 'off'} onChange={(v) => setPrefs({ beta: v === 'on' })} />
+        </Row>
         <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>纯净模式下页面上不会出现猫和小判提示，学习时长和小判照常记录，以后打开时可以直接用。</Text>
       </Card>
     </>

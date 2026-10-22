@@ -126,6 +126,7 @@ def write_package(
     whisper_model: str | None,
     dictionary: dict | None = None,
     refined_by: str | None = None,
+    lang: str = "ja",
 ) -> None:
     meta = {
         "version": FORMAT_VERSION,
@@ -140,6 +141,7 @@ def write_package(
         "whisper_model": whisper_model,
         "refined_by": refined_by,  # 做 AI 校对和翻译的模型，没做则为 None
         "has_dictionary": dictionary is not None,
+        "lang": lang,  # ja / en（英语模式，测试版）
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     (pkg_dir / "subtitles.json").write_text(

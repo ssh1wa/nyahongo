@@ -79,6 +79,16 @@ export const TokenText = memo(function TokenText({
 }: Common & { tokens: Token[]; onPressToken?: (index: number) => void; highlight?: number | null }) {
   const c = useColors();
   const size = Math.round(baseSize * useScale());
+  // 英语学习包：没有注音，整句是一段普通文字，单词可以点（自然换行，不按词切块）
+  if (tokens.length && !tokens[0].furigana) {
+    return (
+      <Text style={{ color: color ?? c.ink, fontSize: size, lineHeight: size * 1.45 }}>
+        {tokens.map((t, i) => (t.word && onPressToken ? (
+          <Text key={i} onPress={() => onPressToken(i)} style={highlight === i ? { backgroundColor: c.accentSoft, color: c.accent } : undefined}>{t.surface}</Text>
+        ) : t.surface))}
+      </Text>
+    );
+  }
   return (
     <View style={styles.line} accessibilityLabel={tokens.map((t) => t.surface).join('')}>
       {kinsokuGroups(tokens.map((t, i) => ({ t, i })), (x) => x.t.surface).map((group, g) => (
@@ -86,11 +96,11 @@ export const TokenText = memo(function TokenText({
         <View key={g} style={styles.token}>
           {group.map(({ t, i }) => {
             // 一个词内部不换行；词本身很长（超过一行）的情况极少
-            const cells = t.furigana.flatMap((seg) => (seg.reading ? [seg] : Array.from(seg.text).map((ch) => ({ text: ch, reading: null }))));
+            const cells = (t.furigana ?? [{ text: t.surface }]).flatMap((seg) => (seg.reading ? [seg] : Array.from(seg.text).map((ch) => ({ text: ch, reading: null }))));
             const content = cells.map((cell, j) => (
               <Cell key={j} {...cell} size={size} color={color ?? c.ink} rubyColor={c.ruby} showRuby={showRuby} serif={serif} />
             ));
-            if (!onPressToken || ['補助記号', '記号', '空白'].includes(t.pos)) {
+            if (!onPressToken || ['補助記号', '記号', '空白'].includes(t.pos ?? '')) {
               return <View key={i} style={styles.token}>{content}</View>;
             }
             return (

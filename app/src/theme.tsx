@@ -28,9 +28,10 @@ export type Prefs = {
   showRuby: boolean; // 默认显示注音
   zhMode: 'show' | 'tap' | 'hidden'; // 默认整句译文显示方式
   companion: boolean; // 学习伙伴（小游戏）；关掉就是纯净模式，学习时长照常记录
+  beta: boolean; // 测试版功能（现在是英语模式）
 };
 
-export const DEFAULT_PREFS: Prefs = { themeMode: 'system', accent: 'shu', textScale: 1, showRuby: true, zhMode: 'tap', companion: true };
+export const DEFAULT_PREFS: Prefs = { themeMode: 'system', accent: 'shu', textScale: 1, showRuby: true, zhMode: 'tap', companion: true, beta: false };
 
 const base = {
   light: {

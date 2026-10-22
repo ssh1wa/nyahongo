@@ -121,6 +121,7 @@ function renderLibrary() {
           <div class="switches">
             <label class="switch"><input type="checkbox" id="audio-only"><span class="track"></span>只保留音频（播客）</label>
             <label class="switch" title="B 站多 P、YouTube 播放列表等会拆成每集一个任务"><input type="checkbox" id="playlist"><span class="track"></span>展开整个合集</label>
+            <label class="switch" title="测试版：英语视频做成中英双语字幕，点单词查英汉词典（不逐词拆解）"><input type="checkbox" id="lang-en"><span class="track"></span>英语（测试版）</label>
           </div>
           <span class="hint">也可以 <button class="link-btn" id="pick-file" type="button">选择本地文件（可多选）</button> 或直接拖进窗口</span>
           <input type="file" id="file-input" accept="video/*,audio/*,.mkv" multiple hidden>
@@ -136,6 +137,9 @@ function renderLibrary() {
   audioOnly.checked = store.get("audioOnly", false);
   audioOnly.addEventListener("change", () => store.set("audioOnly", audioOnly.checked));
 
+  const langEn = $("#lang-en");
+  langEn.checked = store.get("langEn", false);
+  langEn.addEventListener("change", () => store.set("langEn", langEn.checked));
   const playlist = $("#playlist");
   playlist.checked = store.get("playlist", false);
   playlist.addEventListener("change", () => store.set("playlist", playlist.checked));
@@ -155,7 +159,7 @@ function renderLibrary() {
     const btn = e.submitter;
     if (btn) { btn.disabled = true; btn.textContent = playlist.checked ? "展开合集中…" : "提交中…"; }
     try {
-      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked }) });
+      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked, lang: langEn.checked ? "en" : "ja" }) });
       urlBox.value = "";
       autoGrow();
       toast(r.failed.length ? `已加入 ${r.created} 个任务，${r.failed.length} 个合集展开失败，按单个链接处理` : `已加入 ${r.created} 个任务`);
@@ -222,7 +226,7 @@ async function loadLibrary() {
     e.stopPropagation();
     const item = items.find((x) => x.id === btn.dataset.redo);
     try {
-      await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: item.source_url, audio_only: item.media_type === "audio", overwrite: true }) });
+      await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: item.source_url, audio_only: item.media_type === "audio", overwrite: true, lang: item.lang || "ja" }) });
       toast("已加入队列：已下载的视频和转写结果会直接复用");
       refreshJobs();
     } catch (err) { toast(err.message); }
@@ -241,7 +245,8 @@ function cardHtml(m) {
   const thumb = m.has_thumb
     ? `<img src="/api/library/${m.id}/thumb" alt="" loading="lazy">`
     : m.media_type === "audio" ? ICONS.audio : ICONS.film;
-  const source = m.subtitle_source === "manual" ? '<span class="tag manual">人工字幕</span>' : '<span class="tag">AI 转写</span>';
+  const source = (m.lang === "en" ? '<span class="tag manual">英语</span>' : "")
+    + (m.subtitle_source === "manual" ? '<span class="tag manual">人工字幕</span>' : '<span class="tag">AI 转写</span>');
   return `
     <a class="card" href="#/play/${m.id}">
       <button class="card-delete" data-id="${m.id}" title="删除">${ICONS.trash}</button>
@@ -284,7 +289,7 @@ async function refreshJobs() {
   wrap.querySelectorAll("[data-overwrite]").forEach((b) => b.addEventListener("click", async () => {
     const job = data.jobs.find((j) => j.id === b.dataset.overwrite);
     await api(`/api/jobs/${job.id}`, { method: "DELETE" });
-    await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: job.source, audio_only: job.audio_only, overwrite: true, title: job.title }) });
+    await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: job.source, audio_only: job.audio_only, overwrite: true, title: job.title, lang: job.lang || "ja" }) });
     toast("已重新加入队列");
     refreshJobs();
   }));
@@ -342,7 +347,7 @@ let uploading = false;
 let uploadSeq = 0;
 
 function uploadFile(file) {
-  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false) });
+  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja" });
   refreshJobs();
   pumpUploads();
 }
@@ -355,7 +360,7 @@ function pumpUploads() {
   uploading = true;
   u.started = true;
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}`);
+  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}&lang=${u.lang}`);
   xhr.upload.onprogress = (e) => { if (e.lengthComputable) u.progress = e.loaded / e.total; };
   xhr.onloadend = () => {
     uploads.delete(key);
@@ -391,10 +396,11 @@ function pumpUploads() {
 // ---------- 播放器 ----------
 function rubyHtml(tokens, sIdx) {
   return tokens.map((t, tIdx) => {
-    const inner = t.furigana.map((f) => f.reading
+    // 英语学习包没有注音，单词 token 带 word: true
+    const inner = t.furigana ? t.furigana.map((f) => f.reading
       ? `<ruby>${esc(f.text)}<rt>${esc(f.reading)}</rt></ruby>`
-      : esc(f.text)).join("");
-    const word = NON_WORD.has(t.pos) ? "" : " word";
+      : esc(f.text)).join("") : esc(t.surface);
+    const word = (t.furigana ? !NON_WORD.has(t.pos) : t.word) ? " word" : "";
     return `<span class="tok${word}" data-s="${sIdx}" data-t="${tIdx}">${inner}</span>`;
   }).join("");
 }
@@ -616,8 +622,8 @@ async function renderPlayer(id) {
   // 点击当前句里的单词：显示完整词条
   function showWordCard(token) {
     const entry = token.dict != null ? dictionary[token.dict] : null;
-    const head = entry ? (entry.kanji[0] || entry.readings[0]) : token.base;
-    const readings = entry ? entry.readings.slice(0, 3).join("、") : token.reading || "";
+    const head = entry ? (entry.kanji[0] || entry.readings[0]) : token.base || token.surface;
+    const readings = entry?.phonetic ? `/${entry.phonetic}/` : entry ? entry.readings.slice(0, 3).join("、") : token.reading || "";
     const senses = entry ? entry.senses.map((s, i) => `
       <li>
         <div class="ws-tags">${[...s.pos, ...s.tags].map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
@@ -628,7 +634,7 @@ async function renderPlayer(id) {
       <button class="icon-btn wc-close" title="关闭">${ICONS.close}</button>
       <div class="wc-head"><span class="wc-word" lang="ja">${esc(head)}</span><span class="wc-reading" lang="ja">${esc(readings)}</span>
         ${entry?.common ? '<span class="tag manual">常用词</span>' : ""}</div>
-      ${token.surface !== head ? `<div class="wc-form">原文中的形式：<span lang="ja">${esc(token.surface)}</span></div>` : ""}
+      ${token.surface.toLowerCase() !== String(head).toLowerCase() ? `<div class="wc-form">原文中的形式：<span lang="ja">${esc(token.surface)}</span></div>` : ""}
       <ol class="wc-senses">${senses}</ol>`;
     wordCard.hidden = false;
     wordCard.querySelector(".wc-close").addEventListener("click", () => { wordCard.hidden = true; });

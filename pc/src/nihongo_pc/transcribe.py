@@ -76,19 +76,19 @@ def _create_model(cfg: WhisperConfig):
 
 
 def transcribe(
-    media: Path, cfg: WhisperConfig, on_progress: Callable[[float], None] | None = None
+    media: Path, cfg: WhisperConfig, on_progress: Callable[[float], None] | None = None, language: str = "ja"
 ) -> list[dict]:
-    """返回 Whisper 原始分段 [{start, end, text, words: [{start, end, word}]}]。"""
+    """返回 Whisper 原始分段 [{start, end, text, words: [{start, end, word}]}]。language：ja / en"""
     model = _load_model(cfg)
     segments, info = model.transcribe(
         str(media),
-        language="ja",
+        language=language,
         beam_size=cfg.beam_size,
         word_timestamps=True,
         vad_filter=True,  # 跳过静音段，减少幻觉
         vad_parameters={"min_silence_duration_ms": 500},
         condition_on_previous_text=False,  # 防止一句话错了之后连环重复
-        initial_prompt=cfg.initial_prompt or None,
+        initial_prompt=(cfg.initial_prompt or None) if language == "ja" else None,  # 提示词是日语的
     )
 
     raw: list[dict] = []

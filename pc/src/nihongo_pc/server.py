@@ -170,6 +170,7 @@ class Job:
     audio_only: bool = False
     overwrite: bool = False
     title: str | None = None
+    lang: str = "ja"  # ja / en（英语模式，测试版）
     status: str = "queued"  # queued / running / done / error
     stage: int = 0
     stage_progress: float | None = 0
@@ -198,7 +199,7 @@ def _worker() -> None:
                 job.display = detail
 
         try:
-            opts = Options(audio_only=job.audio_only, overwrite=job.overwrite, title=job.title)
+            opts = Options(audio_only=job.audio_only, overwrite=job.overwrite, title=job.title, lang=job.lang)
             result = run(job.source, load_config(), opts, progress)
             job.pkg_id = result.pkg_dir.name
             job.display = result.title
@@ -218,11 +219,21 @@ def _submit(job: Job) -> dict:
     return asdict(job)
 
 
+LANGS = ("ja", "en")
+
+
+def _lang(value: str) -> str:
+    if value not in LANGS:
+        raise HTTPException(400, f"不支持的语言：{value}")
+    return value
+
+
 class JobRequest(BaseModel):
     source: str
     audio_only: bool = False
     overwrite: bool = False
     title: str | None = None
+    lang: str = "ja"
 
 
 @app.post("/api/jobs")
@@ -231,7 +242,7 @@ def create_job(req: JobRequest) -> dict:
     if not source:
         raise HTTPException(400, "请输入链接")
     return _submit(Job(id=uuid.uuid4().hex[:8], source=source, display=req.title or source,
-                       audio_only=req.audio_only, overwrite=req.overwrite, title=req.title))
+                       audio_only=req.audio_only, overwrite=req.overwrite, title=req.title, lang=_lang(req.lang)))
 
 
 # ---------- 手机离线词典 ----------
@@ -282,12 +293,14 @@ class BatchRequest(BaseModel):
     sources: list[str]
     audio_only: bool = False
     playlist: bool = False  # 把合集/播放列表/多分 P 展开成单集
+    lang: str = "ja"
 
 
 @app.post("/api/jobs/batch")
 def create_jobs(req: BatchRequest) -> dict:
     """一次提交多个链接（每行一个），可选展开合集。返回新建的任务数和展开失败的链接。"""
     cfg = load_config()
+    lang = _lang(req.lang)
     seen: set[str] = set()
     created, failed = [], []
     for raw in req.sources:
@@ -302,14 +315,14 @@ def create_jobs(req: BatchRequest) -> dict:
             except Exception as e:  # noqa: BLE001 — 展开失败就当单个链接处理，并告诉用户
                 failed.append(f"{source}：{e}")
         for url, display in items:
-            created.append(_submit(Job(id=uuid.uuid4().hex[:8], source=url, display=display, audio_only=req.audio_only)))
+            created.append(_submit(Job(id=uuid.uuid4().hex[:8], source=url, display=display, audio_only=req.audio_only, lang=lang)))
     if not created:
         raise HTTPException(400, "没有可处理的链接")
     return {"created": len(created), "failed": failed}
 
 
 @app.post("/api/upload")
-async def upload(request: Request, filename: str, audio_only: bool = False) -> dict:
+async def upload(request: Request, filename: str, audio_only: bool = False, lang: str = "ja") -> dict:
     """浏览器拿不到本地文件路径，所以把文件流式传到 workspace/uploads 再处理。"""
     name = Path(filename).name
     if not name:
@@ -322,7 +335,7 @@ async def upload(request: Request, filename: str, audio_only: bool = False) -> d
             f.write(chunk)
     title = Path(name).stem
     return _submit(Job(id=uuid.uuid4().hex[:8], source=str(target), display=title,
-                       audio_only=audio_only, title=title))
+                       audio_only=audio_only, title=title, lang=_lang(lang)))
 
 
 @app.get("/api/jobs")
