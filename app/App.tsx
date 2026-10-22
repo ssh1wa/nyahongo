@@ -9,6 +9,7 @@ import { autoSync, onSynced } from './src/lib/sync';
 import { NavContext, type Nav, type TabId } from './src/nav';
 import { SpriteProvider } from './src/game/Sprites';
 import { SelectionProvider } from './src/components/Selection';
+import { Welcome } from './src/components/Welcome';
 import { CatRoomScreen } from './src/screens/CatRoomScreen';
 import { GrammarScreen } from './src/screens/GrammarScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
@@ -111,6 +112,7 @@ function Main() {
       {settingsOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><SettingsScreen onBack={closeSettings} /></View></View> : null}
       {catRoomOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><CatRoomScreen onBack={closeCatRoom} /></View></View> : null}
       </View>
+      <Welcome />
       </SelectionProvider>
     </NavContext.Provider>
   );

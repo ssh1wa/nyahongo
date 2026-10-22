@@ -409,7 +409,7 @@ function UrlForm({ onDone }: { onDone: (p: { title: string; text: string; url: s
         style={[styles.searchInput, { flex: 0, color: c.ink, borderColor: c.line, backgroundColor: c.surface }]}
       />
       <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
-        适合青空文库作品页（版权已过期的文学作品）、NHK やさしいことばニュース、博客文章等。{mode === 'deepseek' ? '会用 DeepSeek Fetch 提取正文，大多数网站都能读。' : '需要登录或动态加载的页面取不到正文。'}
+        适合青空文库作品页（版权已过期的文学作品）、NHK やさしいことばニュース、博客文章等。{mode === 'deepseek' ? '大多数网站都能读到正文。' : '需要登录才能看的网页读不到正文。'}
       </Text>
       {error ? <ErrorNote message={error} /> : null}
       <Button label="读取网页" onPress={read} loading={busy} disabled={!/^https?:\/\//i.test(url.trim())} icon={<Link size={16} color={c.accentInk} />} />
@@ -470,7 +470,7 @@ function AiForm({ onStart, onRoutineSaved }: { onStart: (a: Article) => void; on
   }
   return (
     <View style={{ gap: 12 }}>
-      <Text style={{ color: c.ink2, lineHeight: 21 }}>写下想读什么，越具体越好，比如「科普一下什么是随机森林」。AI 会按你的水平（{level}，在设置里改）来写。</Text>
+      <Text style={{ color: c.ink2, lineHeight: 21 }}>写下想读的内容，越具体越好，比如「日本的便利店为什么这么多」。AI 会按你的日语水平（{level}）来写，水平可以在设置里改。</Text>
       <TextInput
         value={prompt}
         onChangeText={setPrompt}
@@ -497,8 +497,8 @@ function AiForm({ onStart, onRoutineSaved }: { onStart: (a: Article) => void; on
           <Text style={{ color: c.ink, fontWeight: '700' }}>联网查资料再写{web ? '' : '（已关闭）'}</Text>
           <Text style={{ color: c.muted, fontSize: 12, lineHeight: 17 }}>
             {mode === 'deepseek'
-              ? '用 DeepSeek 全网搜索，参照资料写，文末列出来源。适合科普、时事等需要准确事实的内容'
-              : '没有 DeepSeek Key，只能搜日语维基百科。在「设置 → 联网搜索」填 Key 后可以全网搜索'}
+              ? '先上网查资料再写，文末列出参考来源。适合科普、时事这类要求事实准确的内容'
+              : '现在只能查日语维基百科。在「设置 → AI 接口 → 联网搜索」打开后可以查全网'}
           </Text>
         </View>
         <View style={[styles.check, { borderColor: web ? c.accent : c.line, backgroundColor: web ? c.accent : 'transparent' }]}>
@@ -567,8 +567,8 @@ function SearchForm({ onStart }: { onStart: (a: Article) => void }) {
       />
       {tab === 'web' && mode !== 'deepseek' ? (
         <Card style={{ gap: 10 }}>
-          <Text style={{ color: c.ink2, lineHeight: 20 }}>全网搜索用的是 DeepSeek 的搜索接口，需要 DeepSeek 官方 API Key（每千次搜索约 0.75 美元，搜不到不收费）。</Text>
-          <Button label="去设置里填 Key" kind="secondary" small onPress={nav.openSettings} />
+          <Text style={{ color: c.ink2, lineHeight: 20 }}>搜全网要先在设置里打开「联网搜索」（填一个 DeepSeek 的 API Key，费用很低）。不打开的话，可以在旁边搜维基百科。</Text>
+          <Button label="去设置" kind="secondary" small onPress={nav.openSettings} />
         </Card>
       ) : (
         <>

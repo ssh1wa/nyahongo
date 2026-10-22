@@ -6,7 +6,7 @@ import {
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { PixelRatio } from 'react-native';
 import { ITEM_BY_ID, type Item, type Rarity } from '../lib/catalog';
-import { CAT_SHEETS, CHEST_SHEETS, FURNITURE, HAT_SHEETS, PORTRAITS, SCENE_IMAGES, SPRITE_META } from './spriteData';
+import { CAT_SHEETS, CHEST_SHEETS, FURNITURE, HAT_SHEETS, PORTRAITS, SCENE_IMAGES, SPRITE_META, STORE_IMAGES } from './spriteData';
 
 export const SAMPLING = { filter: FilterMode.Nearest, mipmap: MipmapMode.None } as const;
 export const META = SPRITE_META;
@@ -20,6 +20,7 @@ type Images = {
   chests: Record<string, SkImageT | null>;
   portraits: SkImageT | null;
   furniture: SkImageT | null;
+  store: { bg: SkImageT | null; chest: SkImageT | null; chestBig: SkImageT | null; koban: SkImageT | null; yarn: SkImageT | null };
 };
 
 const ImagesContext = createContext<Images | null>(null);
@@ -37,7 +38,14 @@ export function SpriteProvider({ children }: { children: React.ReactNode }) {
   const chests = Object.fromEntries(CHEST_KEYS.map((k) => [k, useImage(CHEST_SHEETS[k])]));
   const portraits = useImage(PORTRAITS);
   const furniture = useImage(FURNITURE);
-  const value = { cats, hats, scenes, chests, portraits, furniture };
+  const store = {
+    bg: useImage(STORE_IMAGES.storeroom_bg),
+    chest: useImage(STORE_IMAGES.store_chest),
+    chestBig: useImage(STORE_IMAGES.store_chest_big),
+    koban: useImage(STORE_IMAGES.store_koban),
+    yarn: useImage(STORE_IMAGES.store_yarn),
+  };
+  const value = { cats, hats, scenes, chests, portraits, furniture, store };
   return <ImagesContext.Provider value={value}>{children}</ImagesContext.Provider>;
 }
 

@@ -1,40 +1,142 @@
-# ことば精听
+# にゃほんご
 
-个人用的日语精听工具：电脑负责下载视频、AI 转写和解析，手机负责逐句学习和复习。
+用 AI 帮你学日语的安卓 App：翻译并拆解句子、读适合自己水平的文章、逐句精听视频和播客、背单词、学语法。学习的时候还有一只猫陪你（猫に小判）。
 
-```
-pc/    电脑端：下载 → Whisper 转写 → AI 校对 → 分词注音查词 → 打包学习包；网页界面 + 局域网同步
-app/   安卓端（Expo / React Native）：同步学习包、逐句播放器、生词本复习、翻译、练习
-```
+配套的**电脑端**负责把视频、播客做成带字幕的「学习包」，手机连上电脑下载后就能逐句精听。只用翻译、阅读、语法、生词本的话，不装电脑端也可以。
+
+## 能做什么
+
+- **翻译**：中日互译，拆解词汇和语法，可以接着追问 AI
+- **阅读**：让 AI 按你的水平写文章（可以先上网查资料）、拍书页和漫画识别日文、读网页、搜维基百科；每句话都有注音和翻译；还能把常读的要求存下来，每天一篇
+- **精听**：电脑端处理过的视频、播客逐句播放，单句循环、每句自动暂停、调速；点单词查词典
+- **语法**：按 N5～N1 排好的语法课，每课有讲解、例句和小测验；一句一练；直接问 AI「这个语法怎么用」「这个场合怎么说」
+- **生词本**：FSRS 记忆算法安排复习，每个词有 AI 详细讲解，记牢的词自动移到「已掌握」
+- **查词**：长按任何日文都能选词、复制、查词；安卓系统的文字选择菜单里也会多一个「查词」，在别的 App 里也能用
+- **多设备同步**：手机、平板连同一台电脑，学习进度自动合并
+
+## 快速开始
+
+### 1. 安装 App
+
+在本项目的 [Releases](../../releases) 页面下载最新的 `nyahongo.apk`，传到安卓手机上安装（需要允许「安装未知来源应用」）。目前只有安卓版。
+
+### 2. 填一个 AI 服务的 API Key
+
+翻译、讲解、出题都要用 AI，需要你自己申请一个 API Key（按用量付费，日常学习花得很少）。第一次打开 App 会有引导，也可以在「设置 → AI 接口」里填。
+
+| 服务商 | 申请 Key 的网站 | 说明 |
+|---|---|---|
+| DeepSeek | platform.deepseek.com | 便宜、中文好；**没有看图模型**，用拍照识字要另选一家 |
+| DeepInfra | deepinfra.com | 模型多，文字和看图都有（开发时一直用的这家） |
+| 阿里云百炼 | bailian.console.aliyun.com | 国内直连，通义千问系列，能看图 |
+| 硅基流动 | cloud.siliconflow.cn | 国内直连，开源模型多，能看图 |
+
+填好 Key 后 App 会自动读取这家的模型列表，选一个就能用。
+
+**联网搜索（可选）**：让 AI 写文章前先上网查资料、在「阅读」里搜全网文章，需要 DeepSeek 的 Key（约每千次搜索 5 元人民币）。不填也能用，只能搜日语维基百科。
+
+### 3. 装电脑端（可选，精听视频需要）
+
+见下面的[电脑端](#电脑端)。App 里「精听」页右上角的问号里也有同样的图文教程。
 
 ## 电脑端
 
-双击 `pc/启动.bat`，浏览器会打开学习库。粘贴 B 站 / YouTube 链接，或者把本地视频拖进窗口即可。详细说明见 [pc/README.md](pc/README.md)。
+需要一台 **Windows** 电脑。有 NVIDIA 显卡的话语音转文字会快很多，没有显卡也能用，只是慢一些。
 
-AI 校对和词条翻译需要在 `pc/config.toml` 的 `[llm]` 里配置 OpenAI 兼容接口（这个文件不会提交到 git）。不配置也能用，只是没有标点校对、整句翻译和中文释义。
+1. **下载项目**：本页面右上角「Code → Download ZIP」，解压到路径里没有空格和中文的文件夹，比如 `D:\nihongo`
+2. **安装 uv**（Python 环境管理工具）：打开 PowerShell，运行
+   ```powershell
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+3. **安装 ffmpeg**：
+   ```powershell
+   winget install Gyan.FFmpeg
+   ```
+   装完关掉 PowerShell 再重新打开。
+4. **填 AI 的 Key**：把 `pc\config.example.toml` 复制一份改名为 `config.toml`，用记事本打开，在 `[llm]` 下填 `base_url`、`api_key` 和 `model`（和手机上用同一家就行）。AI 用来校对字幕、加中文翻译；不填也能用，只是没有中文翻译。
+5. **双击 `pc\启动.bat`**：第一次会自动安装依赖，等几分钟，完成后浏览器会打开电脑端网页。黑色窗口不要关，关掉电脑端就停了。
 
-## 手机端
+### 导入视频
 
-1. 编译 APK：双击 `app/build-apk.bat`（复用 `D:\Myproject\APPs\KotobaBiyori\.toolchain` 里的 JDK、Android SDK 和 Gradle 缓存）
-2. 把 `app/android/app/build/outputs/apk/release/app-release.apk` 装到手机上
-3. 手机和电脑连同一个 Wi-Fi，在 App 的「设置」里填电脑网页右上角显示的「手机同步」地址
-4. 回到「学习库」，下载学习包
+在电脑端网页粘贴 B 站、YouTube、niconico 链接，点「开始处理」；或者把电脑里的视频、音频文件拖进窗口。处理流程是：下载 → 语音转文字（视频自带日语字幕时直接用字幕）→ AI 校对和翻译 → 分词、注音、查词典。
 
-修改 `app/app.json` 里的插件或权限后，要先运行 `npx expo prebuild --platform android` 重新生成 `app/android`。
+- 只想听：勾选「只保留音频（播客）」，文件小很多
+- B 站多 P、YouTube 播放列表：勾选「展开整个合集」，每集一个学习包
+- 英语视频：勾选「英语（测试版）」，做成中英双语字幕；手机上要在「设置 → 学习」打开「测试版功能」
 
-## 学习包格式
+### 连接手机
+
+1. 手机和电脑连同一个 Wi-Fi
+2. 电脑端网页右上角会显示「📱 手机同步：192.168.x.x:8765」
+3. App 的「设置 → 同步与词典」里填这个地址，点「测试连接并保存」
+4. 回到「精听」页，下拉刷新，下载学习包；顺便在「设置 → 同步与词典」下载离线词典（约 70 MB，查词更准、省 AI 费用）
+
+第一次启动电脑端时 Windows 会问是否允许网络访问，要选「允许」。点错了可以在「Windows 安全中心 → 防火墙 → 允许应用通过防火墙」里把 Python 勾上。
+
+手机、平板都填同一个地址，生词本、复习进度、阅读和翻译记录、语法进度、精听进度、猫に小判的进度会通过电脑自动合并同步。
+
+## 常见问题
+
+**第一次处理视频卡在下载模型 / 下载词典**
+
+语音识别模型（约 3 GB）从 Hugging Face 下载，词典从 GitHub 下载，国内网络可能很慢或连不上。关掉黑色窗口，在 `pc` 文件夹的地址栏输入 `cmd` 回车，在弹出的窗口里运行（代理地址换成你自己的；没有代理就只设第一行的镜像）：
+
+```bat
+set HF_ENDPOINT=https://hf-mirror.com
+set HTTPS_PROXY=http://127.0.0.1:7890
+启动.bat
+```
+
+**YouTube、niconico 下载失败**
+
+在 `config.toml` 的 `[download]` 里把 `proxy` 填成你的代理地址。需要登录才能看的视频，把 `cookies_from_browser` 填成你登录用的浏览器（`edge` 或 `chrome`）。
+
+**手机连不上电脑**
+
+检查电脑端的黑色窗口还开着、手机没连到别的 Wi-Fi 或在用流量、Windows 防火墙允许了 Python。
+
+**数据存在哪里**
+
+API Key 只保存在你自己设备的加密存储里。学习记录存在手机本地；开了同步的话，电脑上 `pc\sync\` 里也有一份（会保留最近 30 个旧版本）。App 只会把要处理的内容发给你自己选的 AI 服务。
+
+**AI 讲错了怎么办**
+
+AI 生成的讲解、翻译和例句可能有错，以词典和原始资料为准。查词优先用离线词典（JMdict），词典里没有的词才用 AI 释义，并会标明「AI 释义」。
+
+## 自己编译 App
+
+App 用 Expo（React Native）写成，在 `app/` 目录：
+
+```bash
+cd app
+npm install
+npx expo prebuild --platform android
+npx expo run:android --variant release
+```
+
+需要 JDK 17 和 Android SDK。`app/build-apk.bat` 是作者自己用的打包脚本，用环境变量 `NIHONGO_TOOLCHAIN` 指向放 JDK、Android SDK 和 Gradle 缓存的文件夹。
+
+测试：
+
+```bash
+cd app && npx tsc --noEmit && node --test tests/syncMerge.test.mjs
+cd pc && uv run pytest
+```
+
+## 项目结构
 
 ```
-media.mp4 / media.m4a   压缩后的媒体
-meta.json               标题、来源、时长、句数、处理用的模型
-subtitles.json          句子：时间戳、原文、整句中文、分词（原形、读音、词性、注音分段、JMdict 词条 id）
-dictionary.json         这一集用到的 JMdict 词条（读音、词性、中英文义项）
-thumb.jpg               封面
+app/   安卓 App（Expo / React Native）
+pc/    电脑端：下载 → Whisper 转写 → AI 校对 → 分词注音查词 → 打包学习包；网页界面、局域网同步
+art/   猫に小判的像素美术：art/tools/ 里的 Python 脚本用代码画出所有素材
 ```
 
-## 数据来源
+电脑端的命令行用法和学习包格式见 [pc/README.md](pc/README.md)。
 
-- 词典：[JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) © Electronic Dictionary Research and Development Group，CC BY-SA 4.0；JSON 版本来自 [jmdict-simplified](https://github.com/scriptin/jmdict-simplified)
-- 中文释义：由 AI 翻译 JMdict 的英文义项，词条本身（写法、读音、词性、义项划分）全部来自 JMdict
-- 复习算法：FSRS（[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)）
+## 数据来源和许可
+
+- 日语词典：[JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) © Electronic Dictionary Research and Development Group，CC BY-SA 4.0；JSON 版本来自 [jmdict-simplified](https://github.com/scriptin/jmdict-simplified)。中文释义由 AI 翻译 JMdict 的英文义项，词条本身（写法、读音、词性、义项划分）全部来自 JMdict
+- 英汉词典（英语模式）：[ECDICT](https://github.com/skywind3000/ECDICT) © skywind3000，MIT
 - 语法点：[Hanabira](https://hanabira.org) 开源日语语法库（`app/src/data/grammar.json`，去掉了罗马音），署名后可免费使用；课程编排、中文讲解和练习题由 AI 基于这些资料生成
+- 复习算法：FSRS（[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)，MIT）
+- 语音识别：[faster-whisper](https://github.com/SYSTRAN/faster-whisper)；分词：SudachiPy

@@ -5,6 +5,7 @@
 - hats_<体型>.png：24 件饰品戴在这种体型上的图层（32×40 一格，比猫多上方 8 行）
 - furniture.png：8 件家具（32×32 一格）
 - scenes/<id>.png：8 个场景（160×96）
+- storeroom_bg.png、store_*.png：仓库（放宝箱、小判、毛玉），见 storeroom.py
 
 运行：uv run --with pillow --no-project python -I art/tools/export_app.py
 """
@@ -24,6 +25,7 @@ from accessories import H as ACC_H, TOP as ACC_TOP, accessories, anchors, render
 from furniture import items as furniture_items, paint as paint_furniture  # noqa: E402
 from scenes import SCENES  # noqa: E402
 from chests import STYLE as CHEST_STYLE, frame as chest_frame  # noqa: E402
+import storeroom as ST  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "app" / "assets" / "game"
@@ -92,6 +94,8 @@ def main():
         for i in range(12):
             sheet.paste(chest_frame(r, i).image(), (i * 64, 0))
         sheet.save(ASSETS / f"chest_{r}.png", optimize=True)
+    for k, im in ST.sheets().items():
+        im.save(ASSETS / f"{k}.png", optimize=True)
 
     # ---- sprites.ts
     meta = {
@@ -105,6 +109,11 @@ def main():
         "scenes": list(SCENES),
         # 家具的占地（不透明像素的左右范围），猫走动时用来避让
         "furnitureFoot": {it.id: foot(paint_furniture(it)) for it in fits},
+        # 仓库：背景大小、宝箱位置（左上角）、小判和毛玉的位置
+        "store": {
+            "w": ST.W, "h": ST.H, "floor": ST.FLOOR, "chest": [ST.CHEST_W, ST.CHEST_H], "big": [ST.BIG_W, ST.BIG_H], "spots": ST.SPOTS,
+            "koban": [*ST.KOBAN_AT, ST.KOBAN_W, ST.KOBAN_H], "yarn": [*ST.YARN_AT, ST.YARN_W, ST.YARN_H],
+        },
     }
     lines = [
         "// 由 art/tools/export_app.py 生成，不要手改。",
@@ -130,6 +139,9 @@ def main():
         "",
         "export const PORTRAITS = require('../../assets/game/portraits.png');",
         "export const FURNITURE = require('../../assets/game/furniture.png');",
+        "export const STORE_IMAGES = {",
+        *[f"  {k}: require('../../assets/game/{k}.png')," for k in ST.sheets()],
+        "};",
         "",
     ]
     TS.write_text("\n".join(lines), encoding="utf-8")

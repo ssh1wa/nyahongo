@@ -1,8 +1,9 @@
 // 学习库：手机上已下载的学习包 + 电脑上可同步的学习包
-import { Download, Film, Headphones, Laptop, RefreshCw, Trash2 } from 'lucide-react-native';
+import { CircleHelp, Download, Film, Headphones, Laptop, RefreshCw, Trash2 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, EmptyState, ErrorNote, ScreenHeader, SectionLabel, Tag } from '../components/Ui';
+import { PcGuide } from '../components/PcGuide';
+import { Button, Card, EmptyState, ErrorNote, IconButton, ScreenHeader, SectionLabel, Tag } from '../components/Ui';
 import { useNav } from '../nav';
 import {
   deleteLocal, downloadPackage, getPcUrl, listLocal, listRemote, thumbUri,
@@ -26,6 +27,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
   const [remoteError, setRemoteError] = useState('');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<Record<string, number>>({});
+  const [guide, setGuide] = useState(false);
   const handles = useRef<Record<string, DownloadHandle>>({});
 
   const refresh = useCallback(async () => {
@@ -82,12 +84,17 @@ export function LibraryScreen({ active }: { active: boolean }) {
   const available = visible(remote ?? []).filter((m) => localIds.get(m.id)?.created_at !== m.created_at);
 
   return (
+    <>
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} colors={[c.accent]} />}
     >
-      <ScreenHeader kicker="视频 · 播客" title="精听" />
+      <ScreenHeader
+        kicker="视频 · 播客"
+        title="精听"
+        titleExtra={<IconButton label="电脑端教程" onPress={() => setGuide(true)}><CircleHelp size={20} color={c.muted} /></IconButton>}
+      />
 
       <SectionLabel>手机上的学习包</SectionLabel>
       {visible(local).length ? visible(local).map((p) => {
@@ -114,7 +121,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
           </Pressable>
         );
       }) : (
-        <EmptyState icon={<Headphones size={26} color={c.accent} />} title="还没有学习包" text="在电脑上处理视频或播客，再从下面的「电脑上的学习包」下载到手机，就能逐句精听。" />
+        <EmptyState icon={<Headphones size={26} color={c.accent} />} title="还没有学习包" text="先在电脑上把视频或播客做成学习包，再从下面的「电脑上的学习包」下载到手机，就能逐句精听。不知道怎么做，点右上角的问号看教程。" />
       )}
 
       <View style={styles.remoteHead}>
@@ -125,12 +132,18 @@ export function LibraryScreen({ active }: { active: boolean }) {
         <Card style={{ gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Laptop size={22} color={c.accent} />
-            <Text style={{ color: c.ink, flex: 1, lineHeight: 20 }}>还没有连接电脑。在电脑上双击「启动.bat」，把网页右上角显示的手机同步地址填到设置里。</Text>
+            <Text style={{ color: c.ink, flex: 1, lineHeight: 20 }}>学习包在电脑上制作：电脑端把视频变成逐句的日语字幕，手机连上电脑后下载。</Text>
           </View>
-          <Button label="去设置" kind="secondary" onPress={onGoSettings} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button label="看教程" onPress={() => setGuide(true)} icon={<CircleHelp size={16} color={c.accentInk} />} style={{ flex: 1 }} />
+            <Button label="填电脑地址" kind="secondary" onPress={onGoSettings} style={{ flex: 1 }} />
+          </View>
         </Card>
       ) : remoteError ? (
-        <ErrorNote message={`${remoteError}\n电脑地址：${pcUrl}`} />
+        <View style={{ gap: 8 }}>
+          <ErrorNote message={`连不上电脑（${pcUrl}）：${remoteError}\n确认电脑端开着，手机和电脑连的是同一个 Wi-Fi。`} />
+          <Button label="看连接教程" kind="secondary" small onPress={() => setGuide(true)} icon={<CircleHelp size={14} color={c.ink} />} />
+        </View>
       ) : remote && !available.length ? (
         <Text style={{ color: c.muted }}>电脑上的学习包都已经下载了</Text>
       ) : (
@@ -163,6 +176,8 @@ export function LibraryScreen({ active }: { active: boolean }) {
         })
       )}
     </ScrollView>
+    {guide ? <PcGuide onClose={() => setGuide(false)} /> : null}
+    </>
   );
 }
 

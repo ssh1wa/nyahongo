@@ -1,6 +1,6 @@
 // 猫の部屋：房间（猫自由活动）、开宝箱、图鉴（64 件，都有日语名和例句）、今天的学习、规则；「布置房间」进入编辑模式
 import * as Haptics from 'expo-haptics';
-import { BarChart3, Check, ChevronLeft, CircleHelp, Coins, Gift, Paintbrush, Sparkles, X } from 'lucide-react-native';
+import { BarChart3, Check, ChevronLeft, CircleHelp, Paintbrush, Sparkles, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Animated, BackHandler, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,10 +8,11 @@ import { useGame } from '../components/Companion';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, Segmented, SectionLabel, Tag } from '../components/Ui';
 import { RoomView } from '../game/Room';
+import { Storeroom, type StoreTarget } from '../game/Storeroom';
 import { CatPortrait, ChestAnimation, ItemIcon, SceneThumb } from '../game/Sprites';
 import { ITEMS, ITEM_BY_ID, KIND_LABEL, parseRubyLine, RARITY, type Item, type ItemKind } from '../lib/catalog';
 import {
-  ACTIONS, CHEST_SECONDS, dayTotals, DRAW_COST, draw, exchange, MINUTE_POINTS, moveFurniture, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
+  ACTIONS, CHEST_SECONDS, BUY_COST, buyChest, canOpen, dayTotals, draw, OPEN_COST, exchange, MINUTE_POINTS, moveFurniture, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
   localDate, setScene, SOFT_CAP, toggleFurniture, toggleRoomCat, type Action, type DrawResult, type GameState,
 } from '../lib/game';
 import { CONTENT_MAX, radius, useColors } from '../theme';
@@ -41,6 +42,13 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
     return () => sub.remove();
   }, [onBack, editing]);
 
+  const [buying, setBuying] = useState(false);
+  const buy = async () => {
+    if (buying) return;
+    setBuying(true);
+    try { await buyChest(); } catch (e) { fail(e); } finally { setBuying(false); }
+  };
+
   const open = async () => {
     if (opening) return;
     setOpening(true);
@@ -54,7 +62,21 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
   };
 
   if (!game) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
-  const canDraw = game.chests > 0 || game.coins >= DRAW_COST;
+  const short = (need: number) => Math.ceil(need - game.coins);
+  const onStore = (t: StoreTarget) => {
+    if (opening || buying) return;
+    if (t === 'chest') {
+      if (canOpen(game)) void open();
+      else Alert.alert('小判不够', `开一个宝箱要 ${OPEN_COST} 小判，还差 ${short(OPEN_COST)}，去学一会儿吧。`);
+    } else if (t === 'floor') {
+      if (game.coins < BUY_COST) Alert.alert('小判不够', `添一个宝箱要 ${BUY_COST} 小判，还差 ${short(BUY_COST)}。学满 30 分钟也会掉一个宝箱。`);
+      else Alert.alert('添一个宝箱？', `花 ${BUY_COST} 小判，在仓库里放一个宝箱。`, [{ text: '取消', style: 'cancel' }, { text: '添一个', onPress: () => void buy() }]);
+    } else if (t === 'koban') {
+      Alert.alert(`小判 ${coins(game.coins)}`, `学习赚来的：有效学习每分钟 ${MINUTE_POINTS} 个，复习、翻译、读完文章等也会给。开一个宝箱花 ${OPEN_COST} 个，也可以花 ${BUY_COST} 个添一个宝箱。`);
+    } else {
+      Alert.alert(`毛玉 ${game.shards}`, '开到已经有的东西会变成毛玉。攒够了，在下面的图鉴里点开还没收集到的，就能用毛玉换。');
+    }
+  };
   const nextChestMin = Math.ceil((CHEST_SECONDS - game.chestSeconds) / 60);
   const roomWidth = Math.min(width, CONTENT_MAX) - 32;
 
@@ -80,29 +102,22 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
             <RoomView room={game.room} width={roomWidth - 2} />
           </View>
 
-          <View style={styles.statRow}>
-            <Stat icon={<Coins size={18} color="#D29A1E" />} value={coins(game.coins)} label="小判" />
-            <Stat icon={<Gift size={18} color={c.accent} />} value={game.chests} label="宝箱" />
-            <Stat icon={<Text style={{ fontSize: 15 }}>🧶</Text>} value={game.shards} label="毛玉" />
+          {/* 仓库：点宝箱开箱，点空地板添一个宝箱，小判和毛玉也放在这里 */}
+          <View style={[styles.roomFrame, { borderColor: c.line, overflow: 'hidden' }]}>
+            <Storeroom width={roomWidth - 2} coins={game.coins} chests={game.chests} shards={game.shards} onPress={onStore} />
+            <View style={{ alignSelf: 'stretch', padding: 12, gap: 8, backgroundColor: c.surface }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: c.ink2, fontSize: 13 }}>下一个宝箱</Text>
+                <Text style={{ color: c.muted, fontSize: 13 }}>再学 {nextChestMin} 分钟</Text>
+              </View>
+              <View style={[styles.bar, { backgroundColor: c.surface2 }]}>
+                <View style={{ width: `${(game.chestSeconds / CHEST_SECONDS) * 100}%`, height: '100%', backgroundColor: c.accent }} />
+              </View>
+              <Text style={{ color: c.muted, fontSize: 12, textAlign: 'center' }}>
+                {opening || buying ? '请稍候…' : `点宝箱打开（${OPEN_COST} 小判）· 点空地板添一个宝箱（${BUY_COST} 小判）`}
+              </Text>
+            </View>
           </View>
-
-          <Card style={{ gap: 10 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ color: c.ink2, fontSize: 13 }}>下一个宝箱</Text>
-              <Text style={{ color: c.muted, fontSize: 13 }}>再学 {nextChestMin} 分钟</Text>
-            </View>
-            <View style={[styles.bar, { backgroundColor: c.surface2 }]}>
-              <View style={{ width: `${(game.chestSeconds / CHEST_SECONDS) * 100}%`, height: '100%', backgroundColor: c.accent }} />
-            </View>
-            <Button
-              label={game.chests > 0 ? `开宝箱（还有 ${game.chests} 个）` : `用 ${DRAW_COST} 小判开一个`}
-              onPress={open}
-              loading={opening}
-              disabled={!canDraw}
-              icon={<Gift size={18} color={c.accentInk} />}
-            />
-            {!canDraw ? <Text style={{ color: c.muted, fontSize: 12, textAlign: 'center' }}>小判还差 {Math.ceil(DRAW_COST - game.coins)}，去学一会儿吧</Text> : null}
-          </Card>
 
           <Segmented
             options={(['cat', 'hat', 'scene', 'furniture'] as ItemKind[]).map((k) => {
@@ -121,7 +136,7 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
           key={`${game.draws}`}
           result={result}
           game={game}
-          canAgain={game.chests > 0 || game.coins >= DRAW_COST}
+          canAgain={canOpen(game)}
           onAgain={() => { setResult(null); void open(); }}
           onClose={() => setResult(null)}
         />
@@ -130,17 +145,6 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
       {info ? <InfoSheet title={info === 'today' ? '今天的学习' : '小判和宝箱的规则'} onClose={() => setInfo(null)}>
         {info === 'today' ? <Today game={game} /> : <Rules />}
       </InfoSheet> : null}
-    </View>
-  );
-}
-
-function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
-  const c = useColors();
-  return (
-    <View style={[styles.stat, { backgroundColor: c.surface, borderColor: c.line }]}>
-      {icon}
-      <Text style={{ color: c.ink, fontSize: 18, fontWeight: '800' }}>{value}</Text>
-      <Text style={{ color: c.muted, fontSize: 11.5 }}>{label}</Text>
     </View>
   );
 }
@@ -489,7 +493,7 @@ function Rules() {
     <Card style={{ gap: 10 }}>
       <Text style={{ color: c.ink, fontWeight: '700' }}>怎么得小判</Text>
       <Text style={{ color: c.ink2, fontSize: 13, lineHeight: 20 }}>
-        有效学习每分钟 {MINUTE_POINTS} 小判（App 开着、并且 1 分钟内有操作；精听播放时不用点屏幕）。每学满 30 分钟掉一个宝箱。
+        有效学习每分钟 {MINUTE_POINTS} 小判（App 开着、并且 1 分钟内有操作；精听播放时不用点屏幕）。每学满 30 分钟掉一个宝箱，也可以花 {BUY_COST} 小判买一个；开一个宝箱花 {OPEN_COST} 小判。
       </Text>
       {(Object.keys(ACTIONS) as Action[]).map((k) => (
         <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -511,8 +515,6 @@ const styles = StyleSheet.create({
   headIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, gap: 14 },
   roomFrame: { borderWidth: 1, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center' },
-  statRow: { flexDirection: 'row', gap: 10 },
-  stat: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1 },
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { width: '23%', flexGrow: 1, maxWidth: '24%', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, borderRadius: radius.md, borderWidth: 1.5, gap: 2 },

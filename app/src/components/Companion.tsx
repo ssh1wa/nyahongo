@@ -1,7 +1,7 @@
 // 右上角的学习伙伴：显示当前的猫，学习时冒出「+N」，有宝箱时带个小红点。点它进「猫の部屋」。
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { getGame, onGame, type GameState } from '../lib/game';
+import { canOpen, getGame, onGame, type GameState } from '../lib/game';
 import { useNav } from '../nav';
 import { useColors, useTheme } from '../theme';
 import { CatPortrait } from '../game/Sprites';
@@ -45,7 +45,8 @@ export function Companion() {
       <Animated.View style={{ transform: [{ translateY: hop }] }}>
         <CatPortrait id={game.room.cats[0].id} hat={game.room.cats[0].hat} size={32} />
       </Animated.View>
-      {game.chests > 0 ? <View style={[styles.dot, { backgroundColor: c.accent, borderColor: c.bg }]} /> : null}
+      {/* 小红点：现在能开宝箱了 */}
+      {canOpen(game) ? <View style={[styles.dot, { backgroundColor: c.accent, borderColor: c.bg }]} /> : null}
       {bubble ? (
         <Animated.View
           key={bubble.n}

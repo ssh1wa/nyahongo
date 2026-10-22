@@ -23,12 +23,12 @@ function Cell({ text, reading, size, color, rubyColor, showRuby, serif, innerRef
   const rubySize = Math.max(8, Math.round(size * 0.46));
   return (
     <View ref={innerRef} style={styles.cell}>
-      <Text
-        numberOfLines={1}
-        style={{ fontSize: rubySize, lineHeight: rubySize + 3, color: reading && showRuby ? rubyColor : 'transparent', textAlign: 'center' }}
-      >
-        {reading || ' '}
-      </Text>
+      {/* 关掉注音就不占位置（以前只是变透明，行距还是那么宽，看起来像没关） */}
+      {showRuby ? (
+        <Text numberOfLines={1} style={{ fontSize: rubySize, lineHeight: rubySize + 3, color: reading ? rubyColor : 'transparent', textAlign: 'center' }}>
+          {reading || ' '}
+        </Text>
+      ) : null}
       <Text style={{ fontSize: size, lineHeight: Math.round(size * 1.35), color, fontFamily: serif ? fonts.jaSerif : undefined }}>{text}</Text>
     </View>
   );

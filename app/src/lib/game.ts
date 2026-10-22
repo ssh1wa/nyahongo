@@ -3,6 +3,7 @@
 // - 有效时间：App 在前台，且 60 秒内有操作（或精听正在播放），每分钟 1 小判
 // - 行为加分：做什么都有一点，每种每天有上限；复习不看对错，免得为了小判乱按评分
 // - 一天超过 SOFT_CAP 之后收益减半，鼓励每天学一点而不是一次刷很多
+// - 宝箱：学满 30 分钟掉一个，也可以花 BUY_COST 小判买一个；开一个花 OPEN_COST 小判
 // - 抽卡：普通 70 / 稀有 24 / 史诗 5 / 传说 1，10 抽必出稀有以上、50 抽必出史诗以上；重复转成毛玉，攒够换指定的
 import { ITEMS, ITEM_BY_ID, RARITY, RARITY_ORDER, STARTER_CAT, STARTER_SCENE, type Item, type Rarity } from './catalog';
 import { deviceId, kvGet, kvSet } from './db';
@@ -11,7 +12,8 @@ import { maxLedger, type GameSync } from './syncMerge';
 export type Action = 'review' | 'word' | 'article' | 'listen' | 'grammar' | 'practice' | 'translate' | 'ask' | 'routine' | 'download' | 'firstOfDay';
 
 // 按大概花的时间给分：一张卡几秒钟给 1，翻译、做题要想一会儿给 3，读完一篇 / 听完一集给得多。
-// 大致平衡：认真学 30 分钟 ≈ 时间 30 + 复习 20 + 翻译追问 25 ≈ 75 小判，加上掉的 1 个宝箱，30 分钟能开将近 2 次箱
+// 大致平衡：认真学 30 分钟 ≈ 时间 30 + 复习、翻译、追问 20~45 ≈ 50~75 小判，加上掉的 1 个宝箱：开掉宝箱（50）后
+// 还会剩 0~25，攒几个小时可以多买一个宝箱（100）。价格见下面的 OPEN_COST、BUY_COST
 export const ACTIONS: Record<Action, { label: string; points: number; dailyCap: number }> = {
   review: { label: '复习一张卡', points: 1, dailyCap: 150 },
   word: { label: '加一个生词', points: 1, dailyCap: 30 },
@@ -28,7 +30,14 @@ export const ACTIONS: Record<Action, { label: string; points: number; dailyCap: 
 
 export const MINUTE_POINTS = 1;
 export const CHEST_SECONDS = 30 * 60;
-export const DRAW_COST = 100;
+// 宝箱和小判的平衡：认真学 30 分钟最少约 30（时间）+ 十几（复习、翻译等）小判，同时掉 1 个宝箱。
+// 开箱价定在这个数附近，宝箱基本随掉随开、不会越攒越多；行为分多的人小判有富余，可以买宝箱（买 + 开一共是开箱价的三倍），
+// 富余的小判有地方花，又不至于便宜到让学习时间变得没意义。
+export const OPEN_COST = 50;
+export const BUY_COST = 100;
+
+/** 现在能不能开宝箱：有宝箱，小判也够开箱价 */
+export const canOpen = (s: Pick<GameState, 'chests' | 'coins'>) => s.chests > 0 && s.coins >= OPEN_COST;
 export const SOFT_CAP = 150;
 const IDLE_MS = 60_000;
 const FAST_REVIEW_MS = 1500;
@@ -328,12 +337,22 @@ function pickRarity(s: GameState): Rarity {
   return 'common';
 }
 
-/** 开一个宝箱（有宝箱先用宝箱，没有就花 DRAW_COST 小判）。 */
+/** 花 BUY_COST 小判买一个宝箱 */
+export function buyChest(): Promise<void> {
+  return mutate((s) => {
+    if (s.coins < BUY_COST) throw new Error(`小判不够，还差 ${Math.ceil(BUY_COST - s.coins)}`);
+    s.coins -= BUY_COST;
+    s.chests += 1;
+  });
+}
+
+/** 开一个宝箱：用掉一个宝箱，花 OPEN_COST 小判。 */
 export function draw(): Promise<DrawResult> {
   return mutate((s) => {
-    if (s.chests > 0) s.chests -= 1;
-    else if (s.coins >= DRAW_COST) s.coins -= DRAW_COST;
-    else throw new Error(`小判不够，还差 ${Math.ceil(DRAW_COST - s.coins)}`);
+    if (s.chests < 1) throw new Error('还没有宝箱');
+    if (s.coins < OPEN_COST) throw new Error(`小判不够，还差 ${Math.ceil(OPEN_COST - s.coins)}`);
+    s.chests -= 1;
+    s.coins -= OPEN_COST;
     const rarity = pickRarity(s);
     const pool = ITEMS.filter((i) => i.rarity === rarity);
     // 同稀有度里优先给还没有的，重复太多会没意思

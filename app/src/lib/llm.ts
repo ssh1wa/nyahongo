@@ -118,7 +118,8 @@ export type ModelInfo = { id: string; vision: boolean };
 
 // 模型列表接口一般不告诉你哪些能看图，按名字判断（VL、Vision、多模态系列）
 const VISION_HINT = /(vl|vision|gemma-[34]|llama-4|pixtral|omni|gpt-4o|gemini|kimi-k[23])/i;
-const NON_CHAT = /(embed|tts|asr|whisper|image|flux|stable-diffusion|sdxl|rerank|guard|ocr-only|voxtral)/i;
+// 不能聊天的模型（向量、语音、生成图片和视频、重排序……）不列出来，免得新用户选了用不了
+const NON_CHAT = /(embed|tts|asr|whisper|image|flux|stable-diffusion|sdxl|rerank|guard|ocr-only|voxtral|bge-|gte-|e5-|minilm|clip|t2v|t2i|i2v|wan2|hunyuanvideo|ltx-video|kokoro|orpheus|sesame|dia-|chatterbox|zonos|audio|bria|background|foreground|upscal|segment|depth|inpaint|remove|vector|sd3|kolors|recraft|ideogram|seedream|seededit|imagen)/i;
 
 /** 读取接口上可用的对话模型。vision=true 时读识图接口（单独设置了的话）。 */
 export async function listModels(settings: LlmSettings, vision = false): Promise<ModelInfo[]> {

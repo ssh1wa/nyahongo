@@ -5,7 +5,7 @@ import {
   Search, Sparkles, Sun, SunMoon, Trash2,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, ErrorNote, Segmented, SectionLabel } from '../components/Ui';
@@ -103,46 +103,83 @@ function Field({ label, value, onChange, secure, placeholder, url, right }: {
 
 // ---------- AI 接口 ----------
 
-// 常见的、国内能直接访问、有识图模型的 OpenAI 兼容接口
-const VISION_PRESETS = [
-  { name: 'DeepInfra', url: 'https://api.deepinfra.com/v1/openai' },
-  { name: '阿里云百炼', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  { name: '硅基流动', url: 'https://api.siliconflow.cn/v1' },
-];
+// 常见的 OpenAI 兼容服务。site 是申请 API Key 的网站；vision 表示这家有能看图的模型
+const PROVIDERS = [
+  { id: 'deepseek', name: 'DeepSeek', url: 'https://api.deepseek.com', site: 'platform.deepseek.com', vision: false },
+  { id: 'deepinfra', name: 'DeepInfra', url: 'https://api.deepinfra.com/v1/openai', site: 'deepinfra.com', vision: true },
+  { id: 'bailian', name: '阿里云百炼', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', site: 'bailian.console.aliyun.com', vision: true },
+  { id: 'siliconflow', name: '硅基流动', url: 'https://api.siliconflow.cn/v1', site: 'cloud.siliconflow.cn', vision: true },
+] as const;
+
+const normUrl = (u: string) => u.trim().replace(/\/+$/, '');
+const providerOf = (url: string) => PROVIDERS.find((p) => normUrl(p.url) === normUrl(url));
 
 type TestState = { status: 'idle' | 'testing' | 'ok' | 'fail'; text?: string };
+
+/** 选服务商：常见几家点一下就行，选「其他」才需要自己填接口地址 */
+function ProviderPicker({ url, onChange, visionOnly }: { url: string; onChange: (url: string) => void; visionOnly?: boolean }) {
+  const c = useColors();
+  const current = providerOf(url);
+  const [custom, setCustom] = useState(!current && !!url.trim());
+  const list = PROVIDERS.filter((p) => !visionOnly || p.vision);
+  const chip = (on: boolean) => [styles.preset, { backgroundColor: on ? c.accentSoft : c.surface2, borderColor: on ? c.accent : 'transparent' }];
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: c.ink2, fontSize: 13 }}>服务商</Text>
+      <View style={styles.presets}>
+        {list.map((p) => {
+          const on = !custom && current?.id === p.id;
+          return (
+            <Pressable key={p.id} onPress={() => { setCustom(false); onChange(p.url); }} style={chip(on)}>
+              <Text style={{ color: on ? c.accent : c.ink2, fontSize: 13, fontWeight: on ? '700' : '500' }}>{p.name}</Text>
+            </Pressable>
+          );
+        })}
+        <Pressable onPress={() => setCustom(true)} style={chip(custom)}>
+          <Text style={{ color: custom ? c.accent : c.ink2, fontSize: 13, fontWeight: custom ? '700' : '500' }}>其他</Text>
+        </Pressable>
+      </View>
+      {custom ? (
+        <Field label="接口地址（兼容 OpenAI 格式，一般以 /v1 结尾）" value={url} onChange={onChange} placeholder="https://…/v1" url />
+      ) : current ? (
+        <Text style={{ color: c.muted, fontSize: 12 }}>在 {current.site} 注册并创建 API Key，复制到下面。</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function KeyField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const c = useColors();
+  const [show, setShow] = useState(false);
+  return (
+    <Field
+      label={label}
+      value={value}
+      onChange={onChange}
+      secure={!show}
+      placeholder={placeholder}
+      right={<Pressable onPress={() => setShow((v) => !v)} hitSlop={8} style={{ padding: 8 }}>{show ? <EyeOff size={18} color={c.muted} /> : <Eye size={18} color={c.muted} />}</Pressable>}
+    />
+  );
+}
 
 function AiSection() {
   const c = useColors();
   const [s, setS] = useState<LlmSettings>(DEFAULT_LLM);
   const [loaded, setLoaded] = useState(false);
-  const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState('');
   const [picker, setPicker] = useState<'model' | 'visionModel' | null>(null);
   const [tests, setTests] = useState<Record<'model' | 'visionModel', TestState>>({ model: { status: 'idle' }, visionModel: { status: 'idle' } });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // 识图单独设置接口（比如文字用 DeepSeek 官方，它不能识图）
+  // 拍照识字另选一家（比如文字用 DeepSeek 官方，它没有看图模型）
   const [separate, setSeparate] = useState(false);
   const [visionModels, setVisionModels] = useState<ModelInfo[] | null>(null);
   const [loadingVision, setLoadingVision] = useState(false);
   const [visionError, setVisionError] = useState('');
 
   useEffect(() => { loadLlmSettings().then((x) => { setS(x); setSeparate(!!x.visionBaseUrl); setLoaded(true); }); }, []);
-
-  const detectVision = async (settings = s) => {
-    setLoadingVision(true); setVisionError('');
-    try {
-      setVisionModels(await listModels(settings, true));
-    } catch (e) {
-      setVisionModels(null);
-      setVisionError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoadingVision(false);
-    }
-  };
-  const vision = visionEndpoint(s);
 
   // 改动后自动保存（防抖），不用找保存按钮
   const update = (patch: Partial<LlmSettings>) => {
@@ -165,24 +202,45 @@ function AiSection() {
       setLoadingModels(false);
     }
   };
+  const detectVision = async (settings = s) => {
+    setLoadingVision(true); setVisionError('');
+    try {
+      setVisionModels(await listModels(settings, true));
+    } catch (e) {
+      setVisionModels(null);
+      setVisionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingVision(false);
+    }
+  };
+  const vision = visionEndpoint(s);
 
   // 填好 Key 后自动检测一次可用模型
   const lastDetected = useRef('');
   useEffect(() => {
     if (!loaded) return;
     const sig = `${s.baseUrl}|${s.apiKey}`;
-    if (!s.apiKey.trim() || sig === lastDetected.current) return;
+    if (!s.apiKey.trim() || !s.baseUrl.trim() || sig === lastDetected.current) return;
     const t = setTimeout(() => { lastDetected.current = sig; void detect(); }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.apiKey, s.baseUrl, loaded]);
+  const lastVision = useRef('');
+  useEffect(() => {
+    if (!loaded || !separate) return;
+    const sig = `${s.visionBaseUrl}|${vision.apiKey}`;
+    if (!vision.apiKey.trim() || !s.visionBaseUrl.trim() || sig === lastVision.current) return;
+    const t = setTimeout(() => { lastVision.current = sig; void detectVision(); }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.visionBaseUrl, vision.apiKey, separate, loaded]);
 
   const test = async (which: 'model' | 'visionModel') => {
     setTests((t) => ({ ...t, [which]: { status: 'testing' } }));
     await saveLlmSettings(s);
     try {
       const ms = await testModel(s, which === 'visionModel');
-      setTests((t) => ({ ...t, [which]: { status: 'ok', text: `可用 · ${(ms / 1000).toFixed(1)} 秒` } }));
+      setTests((t) => ({ ...t, [which]: { status: 'ok', text: `能用 · 回复用了 ${(ms / 1000).toFixed(1)} 秒` } }));
     } catch (e) {
       setTests((t) => ({ ...t, [which]: { status: 'fail', text: e instanceof Error ? e.message : String(e) } }));
     }
@@ -190,13 +248,17 @@ function AiSection() {
 
   const modelRow = (which: 'model' | 'visionModel', label: string, hint: string) => {
     const t = tests[which];
+    const list = which === 'visionModel' && separate ? visionModels : models;
+    // 换了服务商以后，原来选的模型这家可能没有
+    const missing = !!s[which] && !!list && !list.some((m) => m.id === s[which]);
     return (
       <View style={{ gap: 6 }}>
         <Text style={{ color: c.ink2, fontSize: 13 }}>{label}</Text>
-        <Pressable onPress={() => setPicker(which)} style={[styles.select, { borderColor: c.line, backgroundColor: c.bg }]}>
+        <Pressable onPress={() => setPicker(which)} style={[styles.select, { borderColor: missing ? c.warn : c.line, backgroundColor: c.bg }]}>
           <Text numberOfLines={1} style={{ flex: 1, color: s[which] ? c.ink : c.muted, fontSize: 14.5 }}>{s[which] || '点击选择模型'}</Text>
           <Text style={{ color: c.accent, fontSize: 13, fontWeight: '700' }}>选择</Text>
         </Pressable>
+        {missing ? <Text style={{ color: c.warn, fontSize: 12 }}>这家服务的模型列表里没有它，请重新选择</Text> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: c.muted, fontSize: 12 }}>{hint}</Text>
           <Button label="测试" kind="secondary" small onPress={() => test(which)} loading={t.status === 'testing'} disabled={!(which === 'visionModel' ? vision.apiKey : s.apiKey) || !s[which]} />
@@ -206,61 +268,57 @@ function AiSection() {
     );
   };
 
+  const mainHasVision = providerOf(s.baseUrl)?.vision ?? true;
   return (
     <>
-      <SectionLabel>AI 接口</SectionLabel>
+      <SectionLabel>AI 服务</SectionLabel>
       <Card style={{ gap: 14 }}>
-        <Field label="接口地址（OpenAI 兼容）" value={s.baseUrl} onChange={(v) => update({ baseUrl: v })} url />
-        <Field
-          label="API Key"
-          value={s.apiKey}
-          onChange={(v) => update({ apiKey: v })}
-          secure={!showKey}
-          placeholder="保存在手机的加密存储里"
-          right={<Pressable onPress={() => setShowKey((v) => !v)} hitSlop={8} style={{ padding: 8 }}>{showKey ? <EyeOff size={18} color={c.muted} /> : <Eye size={18} color={c.muted} />}</Pressable>}
-        />
+        <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
+          翻译、讲解、出题都要用 AI。选一家 AI 服务，填上在它官网申请的 API Key 就能用，按用量付费。
+        </Text>
+        <ProviderPicker url={s.baseUrl} onChange={(v) => update({ baseUrl: v })} />
+        <KeyField label="API Key" value={s.apiKey} onChange={(v) => update({ apiKey: v })} placeholder="只保存在这台设备的加密存储里" />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: c.muted, fontSize: 12.5 }}>
-            {loadingModels ? '正在检测可用模型…' : models ? `检测到 ${models.length} 个可用模型（${models.filter((m) => m.vision).length} 个能识图）` : '填好 Key 后会自动检测可用模型'}
+            {loadingModels ? '正在读取这家的模型列表…' : models ? `这家有 ${models.length} 个模型可选` : '填好 Key 后会自动读取模型列表'}
           </Text>
-          <Button label="重新检测" kind="ghost" small onPress={() => detect()} loading={loadingModels} disabled={!s.apiKey} icon={<RefreshCw size={14} color={c.ink2} />} />
+          <Button label="重新读取" kind="ghost" small onPress={() => detect()} loading={loadingModels} disabled={!s.apiKey} icon={<RefreshCw size={14} color={c.ink2} />} />
         </View>
         {modelError ? <ErrorNote message={modelError} /> : null}
-        {modelRow('model', '文字模型', '翻译、精读、语法、练习都用它')}
-        <View style={[styles.divider, { backgroundColor: c.line }]} />
-        <Row label="识图用单独的接口" hint="文字模型那家不能识图时打开（比如 DeepSeek 官方接口只支持文字）">
-          <Segmented
-            options={[{ value: 'same', label: '同上' }, { value: 'separate', label: '单独' }]}
-            value={separate ? 'separate' : 'same'}
-            onChange={(v) => {
-              const on = v === 'separate';
-              setSeparate(on);
-              setVisionModels(null);
-              if (!on) update({ visionBaseUrl: '', visionApiKey: '' });
-            }}
-          />
-        </Row>
+        {modelRow('model', '模型', '翻译、讲解、语法课、出题都用它')}
+      </Card>
+
+      <SectionLabel>拍照识字（可选）</SectionLabel>
+      <Card style={{ gap: 14 }}>
+        <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
+          拍书页、漫画或截图来识别日文，需要能看图的模型。
+          {!mainHasVision && !separate ? '你上面选的服务没有看图模型，要用这个功能请选「另选一家」。' : ''}
+        </Text>
+        <Segmented
+          options={[{ value: 'same', label: '用上面那家' }, { value: 'separate', label: '另选一家' }]}
+          value={separate ? 'separate' : 'same'}
+          onChange={(v) => {
+            const on = v === 'separate';
+            setSeparate(on);
+            setVisionModels(null);
+            if (!on) update({ visionBaseUrl: '', visionApiKey: '' });
+            else if (!s.visionBaseUrl) update({ visionBaseUrl: PROVIDERS[1].url });
+          }}
+        />
         {separate ? (
           <View style={{ gap: 12 }}>
-            <Field label="识图接口地址" value={s.visionBaseUrl} onChange={(v) => update({ visionBaseUrl: v })} placeholder="https://…/v1" url />
-            <View style={styles.presets}>
-              {VISION_PRESETS.map((p) => (
-                <Pressable key={p.url} onPress={() => update({ visionBaseUrl: p.url })} style={[styles.preset, { backgroundColor: s.visionBaseUrl === p.url ? c.accentSoft : c.surface2 }]}>
-                  <Text style={{ color: s.visionBaseUrl === p.url ? c.accent : c.ink2, fontSize: 12.5 }}>{p.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Field label="识图 API Key" value={s.visionApiKey} onChange={(v) => update({ visionApiKey: v })} secure={!showKey} placeholder="留空就用上面的 Key" />
+            <ProviderPicker url={s.visionBaseUrl} onChange={(v) => update({ visionBaseUrl: v })} visionOnly />
+            <KeyField label="这家的 API Key" value={s.visionApiKey} onChange={(v) => update({ visionApiKey: v })} placeholder="和上面同一家可以不填" />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={{ flex: 1, color: c.muted, fontSize: 12.5 }}>
-                {loadingVision ? '正在检测…' : visionModels ? `检测到 ${visionModels.length} 个模型（${visionModels.filter((m) => m.vision).length} 个能识图）` : '填好后点「检测模型」'}
+                {loadingVision ? '正在读取模型列表…' : visionModels ? `有 ${visionModels.filter((m) => m.vision).length} 个能看图的模型` : '填好 Key 后会自动读取模型列表'}
               </Text>
-              <Button label="检测模型" kind="ghost" small onPress={() => detectVision()} loading={loadingVision} disabled={!s.visionBaseUrl.trim() || !vision.apiKey} icon={<RefreshCw size={14} color={c.ink2} />} />
+              <Button label="重新读取" kind="ghost" small onPress={() => detectVision()} loading={loadingVision} disabled={!s.visionBaseUrl.trim() || !vision.apiKey} icon={<RefreshCw size={14} color={c.ink2} />} />
             </View>
             {visionError ? <ErrorNote message={visionError} /> : null}
           </View>
         ) : null}
-        {modelRow('visionModel', '识图模型', separate ? '在上面的识图接口上选择模型' : '拍照、漫画、截图识别文字用')}
+        {modelRow('visionModel', '看图模型', '模型名里带 VL、Vision 的一般都能看图')}
       </Card>
       {picker ? (
         <ModelPicker
@@ -287,6 +345,7 @@ function StatusLine({ ok, text }: { ok?: boolean; text: string }) {
   );
 }
 
+/** 全屏选择模型。用 Modal：放在设置页的滚动区域里会被裁掉，列表显示不全 */
 function ModelPicker({ models, loading, visionOnly, current, onRefresh, onPick, onClose }: {
   models: ModelInfo[] | null; loading: boolean; visionOnly: boolean; current: string; onRefresh: () => void; onPick: (id: string) => void; onClose: () => void;
 }) {
@@ -298,47 +357,51 @@ function ModelPicker({ models, loading, visionOnly, current, onRefresh, onPick, 
     const k = q.trim().toLowerCase();
     return (models ?? []).filter((m) => (all || m.vision) && (!k || m.id.toLowerCase().includes(k)));
   }, [models, q, all]);
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onClose(); return true; });
-    return () => sub.remove();
-  }, [onClose]);
 
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg, paddingTop: insets.top, zIndex: 10 }]}>
-      <View style={styles.head}>
-        <Pressable onPress={onClose} hitSlop={10} style={styles.back}><ChevronLeft size={26} color={c.ink} /></Pressable>
-        <Text style={{ color: c.ink, fontSize: 18, fontWeight: '800', flex: 1 }}>{visionOnly ? '选择识图模型' : '选择文字模型'}</Text>
-        <Button label="刷新" kind="ghost" small onPress={onRefresh} loading={loading} />
-      </View>
-      <View style={{ paddingHorizontal: 16, gap: 10, paddingBottom: 8 }}>
-        <View style={[styles.inputWrap, { borderColor: c.line, backgroundColor: c.surface }]}>
-          <Search size={16} color={c.muted} style={{ marginLeft: 10 }} />
-          <TextInput value={q} onChangeText={setQ} placeholder="搜索，例如 deepseek、qwen" placeholderTextColor={c.muted} autoCapitalize="none" style={[styles.input, { color: c.ink }]} />
+    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
+        <View style={styles.head}>
+          <Pressable onPress={onClose} hitSlop={10} style={styles.back}><ChevronLeft size={26} color={c.ink} /></Pressable>
+          <Text style={{ color: c.ink, fontSize: 18, fontWeight: '800', flex: 1 }}>{visionOnly ? '选择看图模型' : '选择模型'}</Text>
+          <Button label="刷新" kind="ghost" small onPress={onRefresh} loading={loading} />
         </View>
-        {visionOnly ? (
-          <Segmented options={[{ value: 'vision', label: '能识图的' }, { value: 'all', label: '全部' }]} value={all ? 'all' : 'vision'} onChange={(v) => setAll(v === 'all')} />
-        ) : null}
-        <Text style={{ color: c.muted, fontSize: 12 }}>
-          {visionOnly ? '「能识图」是按模型名判断的（VL、Vision 等）。选好后可以点「测试」确认。' : '推荐：deepseek-ai/DeepSeek-V4.1-Flash（快、便宜、中文好）'}
-        </Text>
+        <View style={{ paddingHorizontal: 16, gap: 10, paddingBottom: 8 }}>
+          <View style={[styles.inputWrap, { borderColor: c.line, backgroundColor: c.surface }]}>
+            <Search size={16} color={c.muted} style={{ marginLeft: 10 }} />
+            <TextInput value={q} onChangeText={setQ} placeholder="搜索，例如 deepseek、qwen" placeholderTextColor={c.muted} autoCapitalize="none" style={[styles.input, { color: c.ink }]} />
+          </View>
+          {visionOnly ? (
+            <Segmented options={[{ value: 'vision', label: '能看图的' }, { value: 'all', label: '全部' }]} value={all ? 'all' : 'vision'} onChange={(v) => setAll(v === 'all')} />
+          ) : null}
+          <Text style={{ color: c.muted, fontSize: 12, lineHeight: 17 }}>
+            {visionOnly
+              ? '是否能看图是按模型名猜的，选好后回去点「测试」确认一下。'
+              : '不知道选哪个：优先选名字里带 DeepSeek 或 Qwen 的较新版本，中文好、价格便宜。'}
+          </Text>
+        </View>
+        <FlatList
+          data={list}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 30, gap: 6 }}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={<Text style={{ color: c.muted, padding: 10 }}>{loading ? '正在读取…' : models ? '没有匹配的模型' : '还没有读取到模型列表，确认 API Key 后点「刷新」'}</Text>}
+          renderItem={({ item: m }) => {
+            const on = m.id === current;
+            return (
+              <Pressable onPress={() => onPick(m.id)} style={[styles.modelRow, { backgroundColor: on ? c.accentSoft : c.surface, borderColor: on ? c.accent : c.line }]}>
+                <Text style={{ flex: 1, color: c.ink, fontSize: 14 }}>{m.id}</Text>
+                {m.vision ? <Text style={{ color: c.accent, fontSize: 11, fontWeight: '700' }}>看图</Text> : null}
+                {on ? <Check size={18} color={c.accent} /> : null}
+              </Pressable>
+            );
+          }}
+          ListFooterComponent={q.trim() && !list.some((m) => m.id === q.trim()) ? (
+            <Button label={`直接使用「${q.trim()}」`} kind="secondary" small onPress={() => onPick(q.trim())} style={{ marginTop: 6 }} />
+          ) : null}
+        />
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 30, gap: 6 }}>
-        {!models ? <Text style={{ color: c.muted, padding: 10 }}>{loading ? '正在检测…' : '还没有检测到模型，确认 API Key 后点「刷新」'}</Text> : null}
-        {list.map((m) => {
-          const on = m.id === current;
-          return (
-            <Pressable key={m.id} onPress={() => onPick(m.id)} style={[styles.modelRow, { backgroundColor: on ? c.accentSoft : c.surface, borderColor: on ? c.accent : c.line }]}>
-              <Text style={{ flex: 1, color: c.ink, fontSize: 14 }}>{m.id}</Text>
-              {m.vision ? <Text style={{ color: c.accent, fontSize: 11, fontWeight: '700' }}>识图</Text> : null}
-              {on ? <Check size={18} color={c.accent} /> : null}
-            </Pressable>
-          );
-        })}
-        {q.trim() && !list.some((m) => m.id === q.trim()) ? (
-          <Button label={`直接使用「${q.trim()}」`} kind="secondary" small onPress={() => onPick(q.trim())} />
-        ) : null}
-      </ScrollView>
-    </View>
+    </Modal>
   );
 }
 
@@ -348,7 +411,6 @@ function SearchSection() {
   const c = useColors();
   const [own, setOwn] = useState('');
   const [reuse, setReuse] = useState(false);
-  const [show, setShow] = useState(false);
   const [test, setTest] = useState<TestState>({ status: 'idle' });
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -368,7 +430,7 @@ function SearchSection() {
     const started = Date.now();
     try {
       const hits = await deepseekSearch('日本語 勉強', { count: 3 });
-      setTest({ status: 'ok', text: `可用 · 搜到 ${hits.length} 条 · ${((Date.now() - started) / 1000).toFixed(1)} 秒` });
+      setTest({ status: 'ok', text: `能用 · 搜到 ${hits.length} 条 · ${((Date.now() - started) / 1000).toFixed(1)} 秒` });
     } catch (e) {
       setTest({ status: 'fail', text: e instanceof Error ? e.message : String(e) });
     }
@@ -376,22 +438,23 @@ function SearchSection() {
 
   return (
     <>
-      <SectionLabel>联网搜索</SectionLabel>
+      <SectionLabel>联网搜索（可选）</SectionLabel>
       <Card style={{ gap: 12 }}>
         <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
-          「AI 写读物」联网查资料、「网上找读物」全网搜索，用的是 DeepSeek 官方的搜索接口（每千次约 0.75 美元，搜不到不收费）。DeepInfra 没有搜索接口，所以这里要单独填 DeepSeek 的 Key；文字和识图模型不受影响。
+          打开后，「阅读」里 AI 写文章前会先上网查资料，「网上找」也能搜全网的文章。
+          不打开也能用，只是只能搜日语维基百科。
         </Text>
-        <Field
-          label="DeepSeek API Key（platform.deepseek.com）"
-          value={own}
-          onChange={change}
-          secure={!show}
-          placeholder={reuse ? '文字模型已经是 DeepSeek，留空就复用' : '不填就只能搜日语维基百科'}
-          right={<Pressable onPress={() => setShow((v) => !v)} hitSlop={8} style={{ padding: 8 }}>{show ? <EyeOff size={18} color={c.muted} /> : <Eye size={18} color={c.muted} />}</Pressable>}
-        />
+        <Text style={{ color: c.muted, lineHeight: 18, fontSize: 12.5 }}>
+          搜索用的是 DeepSeek 的服务，需要 DeepSeek 的 API Key（在 platform.deepseek.com 申请）。费用很低，大约每千次搜索 5 元人民币，搜不到不收费。
+        </Text>
+        {reuse ? (
+          <StatusLine ok text="上面的 AI 服务已经是 DeepSeek，会直接用那个 Key，这里不用再填" />
+        ) : (
+          <KeyField label="DeepSeek API Key" value={own} onChange={change} placeholder="不填就只搜日语维基百科" />
+        )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: c.muted, fontSize: 12 }}>
-            {own.trim() || reuse ? '当前：全网搜索（DeepSeek）' : '当前：只搜日语维基百科（免费）'}
+            {own.trim() || reuse ? '现在：可以搜全网' : '现在：只搜日语维基百科'}
           </Text>
           <Button label="测试" kind="secondary" small onPress={run} loading={test.status === 'testing'} disabled={!own.trim() && !reuse} />
         </View>
@@ -447,7 +510,7 @@ function UsageSection() {
       </View>
       <Card style={{ gap: 14 }}>
         {provider.none ? (
-          <Text style={{ color: c.muted, fontSize: 13, lineHeight: 19 }}>目前只支持查询 DeepInfra 账单和 DeepSeek 余额。你用的接口不是这两家时，请看下面的本机统计。</Text>
+          <Text style={{ color: c.muted, fontSize: 13, lineHeight: 19 }}>这里能直接查 DeepInfra 的本月账单和 DeepSeek 的余额。用其他服务的话，看下面的调用统计。</Text>
         ) : null}
         {provider.loading && !provider.deepinfra.length && !provider.deepseek.length ? <ActivityIndicator color={c.accent} /> : null}
         {provider.deepinfra.map((m, i) => ('error' in m ? <StatusLine key={`di${i}`} text={`DeepInfra：${m.error}`} /> : (
@@ -527,7 +590,7 @@ function UsageSection() {
             <Text style={{ color: c.muted, fontSize: 11 }}>今天 {daily[daily.length - 1]?.calls ?? 0} 次</Text>
           </View>
         </View>
-        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>本机统计从这个版本开始记录，只算这台手机发出的请求。</Text>
+        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>调用统计是这个 App 发出的请求（同步过的其他设备也算在内），不含电脑端。</Text>
       </Card>
     </>
   );
@@ -562,13 +625,16 @@ function LearningSection() {
       </Card>
       <SectionLabel>学习伙伴</SectionLabel>
       <Card style={{ gap: 12 }}>
-        <Row label="小猫和收集小游戏" hint="学习得小判、开宝箱收集猫和装扮。关掉就是纯净模式">
+        <Row label="猫に小判" hint="学习攒小判、开宝箱收集猫咪和装饰，右上角有一只猫陪你学">
           <Segmented options={[{ value: 'on', label: '开' }, { value: 'off', label: '纯净' }]} value={prefs.companion ? 'on' : 'off'} onChange={(v) => setPrefs({ companion: v === 'on' })} />
         </Row>
-        <Row label="启用测试版功能" hint="英语模式：电脑端选「英语（测试版）」处理的视频，做成中英双语字幕，点单词查英汉词典">
+        <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>选「纯净」后界面上不再出现猫和小判，学习时长和小判照常记录，以后重新打开时都还在。</Text>
+      </Card>
+      <SectionLabel>测试版</SectionLabel>
+      <Card style={{ gap: 12 }}>
+        <Row label="测试版功能" hint="英语模式：电脑端勾选「英语（测试版）」处理的视频会显示出来，中英双语字幕，点单词查英汉词典">
           <Segmented options={[{ value: 'off', label: '关' }, { value: 'on', label: '开' }]} value={prefs.beta ? 'on' : 'off'} onChange={(v) => setPrefs({ beta: v === 'on' })} />
         </Row>
-        <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>纯净模式下页面上不会出现猫和小判提示，学习时长和小判照常记录，以后打开时可以直接用。</Text>
       </Card>
     </>
   );
@@ -667,7 +733,7 @@ function PcSection() {
       <Card style={{ gap: 12 }}>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Laptop size={20} color={c.accent} />
-          <Text style={{ flex: 1, color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>在电脑上双击「启动.bat」，网页右上角会显示手机同步地址。手机和电脑要连同一个 Wi-Fi。</Text>
+          <Text style={{ flex: 1, color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>电脑端网页右上角会显示「📱 手机同步」地址，填到下面。手机和电脑要连同一个 Wi-Fi。还没装电脑端，看「精听」页右上角问号里的教程。</Text>
         </View>
         <Field label="电脑地址" value={pc} onChange={setPc} placeholder="例如 192.168.1.5:8765" url />
         <Button label="测试连接并保存" onPress={testPc} loading={testing} disabled={!pc.trim()} />
@@ -742,7 +808,7 @@ function DictSection() {
       setProgress(null);
     }
   };
-  const remove = () => Alert.alert('删除离线词典', '删除后查词会改用 AI 释义，可以随时重新下载。', [
+  const remove = () => Alert.alert('删除离线词典', '删除后查词会改用 AI 释义（会花一点费用），可以随时重新下载。', [
     { text: '取消', style: 'cancel' },
     { text: '删除', style: 'destructive', onPress: async () => { await deleteDict(); setLocal(null); } },
   ]);
@@ -754,7 +820,7 @@ function DictSection() {
       <SectionLabel>离线词典</SectionLabel>
       <Card style={{ gap: 12 }}>
         <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
-          JMdict 日语词典（约 21 万词条），阅读、翻译时查词都用它，不再让 AI 编释义。从电脑下载，约 {mb(remote?.size) || '70 MB'}。
+          JMdict 日语词典，约 21 万个词条。查词优先用它，释义准确，也不花 AI 费用。从电脑下载，约 {mb(remote?.size) || '70 MB'}。
         </Text>
         {local === undefined ? <ActivityIndicator color={c.accent} /> : local ? (
           <StatusLine ok text={`已下载 · ${local.entries.toLocaleString()} 词条 · 中文释义 ${local.zh.toLocaleString()} 条${newer ? ' · 电脑上有更新' : ''}`} />
@@ -774,7 +840,7 @@ function DictSection() {
           </View>
         )}
         {error ? <ErrorNote message={error} /> : null}
-        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>没有中文释义的词条，查到时会让 AI 只翻译词典里的英文释义，结果存在手机上。电脑端可以「预翻译常用词」，一次性翻好约 2.2 万个常用词。</Text>
+        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>词典原本是英文释义。查到还没有中文的词条时，会让 AI 把它翻成中文并保存下来，下次就不用再翻。也可以在电脑端点「预翻译常用词」，一次翻好约 2.2 万个常用词（会花一些 AI 费用）。</Text>
       </Card>
     </>
   );
@@ -796,6 +862,7 @@ function AboutSection() {
         <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
           词典：JMdict © Electronic Dictionary Research and Development Group，CC BY-SA 4.0（JSON 版本来自 jmdict-simplified）{'\n'}
           {GRAMMAR_ATTRIBUTION}{'\n'}
+          英汉词典（英语模式）：ECDICT（skywind3000，MIT）{'\n'}
           复习算法：FSRS（ts-fsrs，MIT）{'\n'}
           AI 生成的讲解、翻译和例句可能有错，以词典和原始资料为准。
         </Text>

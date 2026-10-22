@@ -106,7 +106,7 @@ window.addEventListener("hashchange", route);
 const uploads = new Map(); // 正在上传的本地文件（还没变成任务）
 
 function renderLibrary() {
-  document.title = "ことば 学习库";
+  document.title = "にゃほんご 电脑端";
   app.className = "";
   app.innerHTML = `
     <section class="hero">
@@ -416,7 +416,7 @@ async function renderPlayer(id) {
   const { meta, subtitles, dictionary = {}, attribution = "" } = data;
   const sentences = subtitles.sentences;
   const hasZh = sentences.some((s) => s.zh);
-  document.title = `${meta.title} · ことば`;
+  document.title = `${meta.title} · にゃほんご`;
   const isVideo = meta.media_type === "video";
 
   app.innerHTML = `

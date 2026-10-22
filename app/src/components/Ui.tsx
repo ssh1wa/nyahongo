@@ -74,23 +74,26 @@ export function ErrorNote({ message }: { message: string }) {
   );
 }
 
-export function Title({ kicker, title }: { kicker?: string; title: string }) {
+export function Title({ kicker, title, extra }: { kicker?: string; title: string; extra?: React.ReactNode }) {
   const c = useColors();
   return (
     <View style={{ gap: 2 }}>
       {kicker ? <Text style={{ color: c.accent, fontSize: 12, fontWeight: '700' }}>{kicker}</Text> : null}
-      <Text style={{ color: c.ink, fontSize: 26, fontWeight: '800' }}>{title}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Text style={{ color: c.ink, fontSize: 26, fontWeight: '800' }}>{title}</Text>
+        {extra}
+      </View>
     </View>
   );
 }
 
-/** 各个主页面顶部：标题 + 右上角设置（以及可选的其他按钮）。 */
-export function ScreenHeader({ kicker, title, right }: { kicker?: string; title: string; right?: React.ReactNode }) {
+/** 各个主页面顶部：标题（titleExtra 紧跟在标题后面，比如问号）+ 右上角设置（以及可选的其他按钮）。 */
+export function ScreenHeader({ kicker, title, right, titleExtra }: { kicker?: string; title: string; right?: React.ReactNode; titleExtra?: React.ReactNode }) {
   const c = useColors();
   const nav = useNav();
   return (
     <View style={styles.header}>
-      <View style={{ flex: 1 }}><Title kicker={kicker} title={title} /></View>
+      <View style={{ flex: 1 }}><Title kicker={kicker} title={title} extra={titleExtra} /></View>
       {right}
       <Companion />
       <Pressable onPress={nav.openSettings} hitSlop={8} style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}>
