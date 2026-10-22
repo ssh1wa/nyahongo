@@ -1,5 +1,5 @@
 // 电脑端教程（精听页右上角的问号）：从安装电脑端、导入视频，到手机连上电脑、下载学习包。
-// 内容要和电脑端（pc/）的界面文字、启动.bat、config.example.toml 保持一致。
+// 内容要和电脑端（pc/）的界面文字、安装包（pc/installer）、config.example.toml 保持一致。
 import * as Clipboard from 'expo-clipboard';
 import { ChevronLeft, Copy } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -81,27 +81,21 @@ function Cmd({ children }: { children: string }) {
 function Install() {
   return (
     <>
-      <P>电脑端负责把视频、播客变成「学习包」：下载、语音转文字、AI 校对和翻译、标注音、查词典。手机只负责学习。需要一台 Windows 电脑，有 NVIDIA 显卡转写会快很多，没有显卡也能用，只是慢一些。</P>
-      <Step n={1} title="下载项目">
-        <P>在项目的 GitHub 页面点「Code → Download ZIP」，解压到一个路径里没有空格和中文的文件夹，比如 D:\nihongo。</P>
+      <P>电脑端负责把视频、播客变成「学习包」：下载、语音转文字、AI 校对和翻译、标注音、查词典。手机只负责学习。需要一台 Windows 10 / 11 电脑，有 NVIDIA 显卡转写会快很多，没有显卡也能用，只是慢一些。</P>
+      <Step n={1} title="下载安装包">
+        <P>在电脑浏览器打开下面的网址，下载 nyahongo-pc-setup.exe（约 16 MB），双击安装。不需要管理员权限。</P>
+        <Cmd>https://github.com/ssh1wa/nyahongo/releases</Cmd>
+        <Note>国内网络可以勾选安装时的「国内网络」，语音识别模型会从国内镜像下载。</Note>
       </Step>
-      <Step n={2} title="安装 uv（Python 环境管理工具）">
-        <P>按 Win 键搜索「PowerShell」并打开，粘贴下面这行回车：</P>
-        <Cmd>{'powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'}</Cmd>
+      <Step n={2} title="第一次打开">
+        <P>从开始菜单打开「にゃほんご 电脑端」。第一次会自动下载 Python 和需要的组件（约 2.5 GB），电脑上没有 ffmpeg 的话也会自动装，网速慢要等十几分钟，只有这一次。完成后浏览器会打开电脑端网页。</P>
+        <P>打开后有一个黑色窗口，不要关，关掉电脑端就停了。</P>
       </Step>
-      <Step n={3} title="安装 ffmpeg（处理音视频）">
-        <Cmd>winget install Gyan.FFmpeg</Cmd>
-        <P>装完关掉 PowerShell 再重新打开，新装的命令才能用。</P>
-      </Step>
-      <Step n={4} title="填写 AI 的 API Key">
-        <P>进入解压后的 pc 文件夹，把 config.example.toml 复制一份，改名为 config.toml，用记事本打开，在 [llm] 下面填上 api_key 和 model（和手机 App 里用的同一家就行）。</P>
+      <Step n={3} title="填写 AI 的 API Key">
+        <P>开始菜单里点「填写 AI Key 和设置（config.toml）」，在 [llm] 下面填上 base_url、api_key 和 model（和手机 App 里用同一家就行），保存后重新打开电脑端。</P>
         <Note>AI 用来校对字幕、加上中文翻译。不填也能用，只是字幕没有中文翻译，识别错的字也不会被纠正。</Note>
       </Step>
-      <Step n={5} title="双击「启动.bat」">
-        <P>第一次启动会自动安装需要的组件，等几分钟。完成后浏览器会打开电脑端网页。黑色窗口不要关，关掉电脑端就停了。</P>
-        <Note>第一次处理视频时会下载语音识别模型（约 3 GB）。如果一直下载不动：关掉黑色窗口，打开 pc 文件夹，在文件夹上方的地址栏里输入 cmd 回车，在弹出的窗口里粘贴下面这行回车，改用国内镜像启动：</Note>
-        <Cmd>set HF_ENDPOINT=https://hf-mirror.com && 启动.bat</Cmd>
-      </Step>
+      <Note>想自己改代码，也可以下载源码运行：步骤见 GitHub 页面的 README。</Note>
     </>
   );
 }
@@ -110,7 +104,7 @@ function Import() {
   return (
     <>
       <Step n={1} title="打开电脑端网页">
-        <P>双击「启动.bat」后会自动打开；也可以在电脑浏览器里输入：</P>
+        <P>打开电脑端后会自动打开；也可以在电脑浏览器里输入：</P>
         <Cmd>http://127.0.0.1:8765</Cmd>
       </Step>
       <Step n={2} title="粘贴链接，或者拖入文件">
@@ -135,7 +129,7 @@ function Connect() {
         <P>电脑用网线也可以，只要和手机在同一个路由器下。</P>
       </Step>
       <Step n={2} title="找到电脑地址">
-        <P>电脑端网页右上角会显示「📱 手机同步：192.168.x.x:8765」这样的地址。必须是用「启动.bat」打开的电脑端才会显示。</P>
+        <P>电脑端网页右上角会显示「📱 手机同步：192.168.x.x:8765」这样的地址。</P>
       </Step>
       <Step n={3} title="在 App 里填上">
         <P>App 右上角的设置 → 「同步与词典」→ 电脑地址，填进去，点「测试连接并保存」。显示「已连接电脑」就好了。</P>

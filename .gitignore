@@ -15,3 +15,9 @@ pc/sync/
 
 # 词典数据（可重新下载生成）
 pc/data/
+
+# 电脑端安装包：build.ps1 生成的中间文件和输出
+pc/installer/bin/
+pc/installer/Output/
+pc/installer/use-mirror.txt
+pc/installer/nyahongo.ico

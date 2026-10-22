@@ -37,24 +37,34 @@
 
 ### 3. 装电脑端（可选，精听视频需要）
 
-见下面的[电脑端](#电脑端)。App 里「精听」页右上角的问号里也有同样的图文教程。
+在 [Releases](../../releases) 下载电脑端安装包，详见下面的[电脑端](#电脑端)。App 里「精听」页标题旁的问号里也有图文教程。
 
 ## 电脑端
 
-需要一台 **Windows** 电脑。有 NVIDIA 显卡的话语音转文字会快很多，没有显卡也能用，只是慢一些。
+需要一台 **Windows 10 / 11**（64 位）电脑。有 NVIDIA 显卡的话语音转文字会快很多，没有显卡也能用，只是慢一些。
 
-1. **下载项目**：本页面右上角「Code → Download ZIP」，解压到路径里没有空格和中文的文件夹，比如 `D:\nihongo`
-2. **安装 uv**（Python 环境管理工具）：打开 PowerShell，运行
+### 安装（推荐）
+
+1. 在 [Releases](../../releases) 下载 `nyahongo-pc-setup.exe`（约 16 MB），双击安装。不需要管理员权限，默认装在你自己的用户目录里
+2. 安装时可以勾选「国内网络」：语音识别模型会从国内镜像下载
+3. 装完从开始菜单打开「にゃほんご 电脑端」。**第一次启动**会自动下载 Python 和需要的组件（约 2.5 GB），电脑上没有 ffmpeg 的话也会自动装一个，网速慢要等十几分钟，只有这一次。完成后浏览器会打开电脑端网页
+4. **填 AI 的 Key**：开始菜单里点「填写 AI Key 和设置（config.toml）」，在 `[llm]` 下填 `base_url`、`api_key` 和 `model`（和手机上用同一家就行），保存后重新打开电脑端。AI 用来校对字幕、加中文翻译；不填也能用，只是没有中文翻译
+
+打开后会有一个黑色窗口，不要关，关掉电脑端就停了。卸载时下载的组件会一起删掉，学习库和配置会留下。
+
+### 从源码运行（可选）
+
+不想用安装包，或者想改代码：
+
+1. 本页面右上角「Code → Download ZIP」，解压到路径里没有空格和中文的文件夹，比如 `D:\nihongo`
+2. 安装 uv（Python 环境管理工具）和 ffmpeg，在 PowerShell 里运行：
    ```powershell
    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   winget install Gyan.FFmpeg.Essentials
    ```
-3. **安装 ffmpeg**：
-   ```powershell
-   winget install Gyan.FFmpeg
-   ```
-   装完关掉 PowerShell 再重新打开。
-4. **填 AI 的 Key**：把 `pc\config.example.toml` 复制一份改名为 `config.toml`，用记事本打开，在 `[llm]` 下填 `base_url`、`api_key` 和 `model`（和手机上用同一家就行）。AI 用来校对字幕、加中文翻译；不填也能用，只是没有中文翻译。
-5. **双击 `pc\启动.bat`**：第一次会自动安装依赖，等几分钟，完成后浏览器会打开电脑端网页。黑色窗口不要关，关掉电脑端就停了。
+   装完关掉 PowerShell 再重新打开
+3. 把 `pc\config.example.toml` 复制一份改名为 `config.toml`，填好 `[llm]`
+4. 双击 `pc\启动.bat`
 
 ### 导入视频
 
@@ -79,7 +89,10 @@
 
 **第一次处理视频卡在下载模型 / 下载词典**
 
-语音识别模型（约 3 GB）从 Hugging Face 下载，词典从 GitHub 下载，国内网络可能很慢或连不上。关掉黑色窗口，在 `pc` 文件夹的地址栏输入 `cmd` 回车，在弹出的窗口里运行（代理地址换成你自己的；没有代理就只设第一行的镜像）：
+语音识别模型（约 3 GB）从 Hugging Face 下载，词典从 GitHub 下载，国内网络可能很慢或连不上。
+
+- 用安装包装的：重新运行安装包，勾选「国内网络」，模型会改从国内镜像下载
+- 词典也下载不动、或者从源码运行的：关掉黑色窗口，在 `pc` 文件夹的地址栏输入 `cmd` 回车，在弹出的窗口里运行（代理地址换成你自己的；没有代理就只设第一行的镜像）：
 
 ```bat
 set HF_ENDPOINT=https://hf-mirror.com
