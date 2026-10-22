@@ -4,6 +4,25 @@
 
 配套的**电脑端**负责把视频、播客做成带字幕的「学习包」，手机连上电脑下载后就能逐句精听。只用翻译、阅读、语法、生词本的话，不装电脑端也可以。
 
+## 截图
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/screenshots/translate.webp" width="200" alt="翻译：中日互译，拆解词汇和语法"><br><sub>翻译：中日互译，拆解词汇和语法</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/reading.webp" width="200" alt="阅读：按你的水平写文章，每句带注音"><br><sub>阅读：按你的水平写文章，每句带注音</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/reading_sheet.webp" width="200" alt="点一句：译文、重点词、语法，可追问 AI"><br><sub>点一句：译文、重点词、语法，可追问 AI</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/listen.webp" width="200" alt="精听：视频逐句播放，点词查词典"><br><sub>精听：视频逐句播放，点词查词典</sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/screenshots/word.webp" width="200" alt="生词本：词典释义 + AI 详细讲解"><br><sub>生词本：词典释义 + AI 详细讲解</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/ask.webp" width="200" alt="问 AI：某个场合怎么说，例句带注音"><br><sub>问 AI：某个场合怎么说，例句带注音</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/reading_home.webp" width="200" alt="阅读入口：导入、AI 写、搜索、常读"><br><sub>阅读入口：导入、AI 写、搜索、常读</sub></td>
+<td align="center" width="25%"><img src="docs/screenshots/catroom.webp" width="200" alt="猫に小判：学习攒小判，开宝箱收集猫咪"><br><sub>猫に小判：学习攒小判，开宝箱收集猫咪</sub></td>
+</tr>
+</table>
+
+<sub>精听截图里的视频画面打了马赛克。</sub>
+
 ## 能做什么
 
 - **翻译**：中日互译，拆解词汇和语法，可以接着追问 AI
