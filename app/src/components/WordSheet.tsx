@@ -26,8 +26,8 @@ export function EntryView({ entry }: { entry: DictEntry }) {
                 {[...s.pos, ...s.tags].map((t) => <Tag key={t} label={t} />)}
               </View>
             ) : null}
-            <Text style={{ color: c.ink, fontSize: 15.5, lineHeight: 22 }}>{s.zh || s.en.join('; ')}</Text>
-            {s.zh ? <Text style={{ color: c.muted, fontSize: 12 }}>{s.en.join('; ')}</Text> : null}
+            <Text selectable style={{ color: c.ink, fontSize: 15.5, lineHeight: 22 }}>{s.zh || s.en.join('; ')}</Text>
+            {s.zh && s.en.length ? <Text style={{ color: c.muted, fontSize: 12 }}>{s.en.join('; ')}</Text> : null}
           </View>
         </View>
       ))}
@@ -109,10 +109,10 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, english
           {answers.map((a, i) => (
             <View key={i} style={[styles.answer, { backgroundColor: c.surface2 }]}>
               <Text style={{ color: c.muted, fontSize: 12.5 }}>问：{a.question}</Text>
-              <Text style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{a.answer}</Text>
+              <Text selectable style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{a.answer}</Text>
               {a.examples.map((ex, j) => (
                 <View key={j} style={{ gap: 2 }}>
-                  <RubyText segments={ex.japanese} size={16} />
+                  <RubyText segments={ex.japanese} size={16} zh={ex.chinese} />
                   <Text style={{ color: c.muted, fontSize: 12.5 }}>{ex.chinese}</Text>
                 </View>
               ))}

@@ -62,6 +62,9 @@ const MIGRATIONS = [
      output INTEGER NOT NULL DEFAULT 0,
      PRIMARY KEY (day, kind, model)
    );`,
+  // v4：生词本的「已掌握」和 AI 详细释义（JSON，第一次点开时生成后缓存）
+  `ALTER TABLE words ADD COLUMN mastered INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE words ADD COLUMN detail TEXT;`,
 ];
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {

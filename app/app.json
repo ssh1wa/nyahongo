@@ -4,6 +4,7 @@
     "slug": "kotoba-seichou",
     "version": "0.2.0",
     "orientation": "default",
+    "scheme": "nyahongo",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -23,6 +24,7 @@
       "permissions": ["android.permission.CAMERA"]
     },
     "plugins": [
+      "./plugins/withProcessText",
       "expo-video",
       "expo-sqlite",
       "expo-secure-store",

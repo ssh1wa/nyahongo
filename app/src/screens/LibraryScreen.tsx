@@ -9,7 +9,6 @@ import {
   type DownloadHandle, type LocalPackage,
 } from '../lib/packages';
 import type { PackageMeta } from '../lib/types';
-import { countDue } from '../lib/wordbook';
 import { radius, useColors, useTheme } from '../theme';
 
 const fmtDuration = (sec: number) => (sec < 60 ? `${Math.max(1, Math.round(sec))} 秒` : `${Math.round(sec / 60)} 分钟`);
@@ -20,13 +19,11 @@ export function LibraryScreen({ active }: { active: boolean }) {
   const nav = useNav();
   const onOpen = nav.openPlayer;
   const onGoSettings = nav.openSettings;
-  const onGoReview = () => nav.goTab('words');
   const [local, setLocal] = useState<LocalPackage[]>([]);
   const [remote, setRemote] = useState<PackageMeta[] | null>(null);
   const [pcUrl, setPcUrl] = useState('');
   const [remoteError, setRemoteError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [due, setDue] = useState(0);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const handles = useRef<Record<string, DownloadHandle>>({});
 
@@ -34,10 +31,9 @@ export function LibraryScreen({ active }: { active: boolean }) {
     setLoading(true);
     setRemoteError('');
     try {
-      const [l, url, d] = await Promise.all([listLocal(), getPcUrl(), countDue()]);
+      const [l, url] = await Promise.all([listLocal(), getPcUrl()]);
       setLocal(l);
       setPcUrl(url);
-      setDue(d);
       if (url) {
         try {
           setRemote(await listRemote(url));
@@ -90,15 +86,6 @@ export function LibraryScreen({ active }: { active: boolean }) {
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} colors={[c.accent]} />}
     >
       <ScreenHeader kicker="视频 · 播客" title="精听" />
-
-      {due > 0 ? (
-        <Pressable onPress={onGoReview}>
-          <Card style={[styles.dueCard, { backgroundColor: c.accentSoft, borderColor: c.accentSoft }]}>
-            <Text style={{ color: c.accent, fontSize: 15, fontWeight: '700' }}>今天有 {due} 个生词要复习</Text>
-            <Text style={{ color: c.accent }}>去复习 ›</Text>
-          </Card>
-        </Pressable>
-      ) : null}
 
       <SectionLabel>手机上的学习包</SectionLabel>
       {visible(local).length ? visible(local).map((p) => {
@@ -179,7 +166,6 @@ export function LibraryScreen({ active }: { active: boolean }) {
 
 const styles = StyleSheet.create({
   content: { padding: 18, gap: 12, paddingBottom: 40 },
-  dueCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
   pkg: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
   thumb: { width: 96, height: 54, borderRadius: radius.sm, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

@@ -7,16 +7,19 @@
 import { ITEMS, ITEM_BY_ID, RARITY, RARITY_ORDER, STARTER_CAT, STARTER_SCENE, type Item, type Rarity } from './catalog';
 import { kvGet, kvSet } from './db';
 
-export type Action = 'review' | 'word' | 'article' | 'listen' | 'grammar' | 'practice' | 'ask' | 'routine' | 'download' | 'firstOfDay';
+export type Action = 'review' | 'word' | 'article' | 'listen' | 'grammar' | 'practice' | 'translate' | 'ask' | 'routine' | 'download' | 'firstOfDay';
 
+// 按大概花的时间给分：一张卡几秒钟给 1，翻译、做题要想一会儿给 3，读完一篇 / 听完一集给得多。
+// 大致平衡：认真学 30 分钟 ≈ 时间 30 + 复习 20 + 翻译追问 25 ≈ 75 小判，加上掉的 1 个宝箱，30 分钟能开将近 2 次箱
 export const ACTIONS: Record<Action, { label: string; points: number; dailyCap: number }> = {
   review: { label: '复习一张卡', points: 1, dailyCap: 150 },
   word: { label: '加一个生词', points: 1, dailyCap: 30 },
-  article: { label: '读完一篇精读', points: 5, dailyCap: 6 },
+  translate: { label: '翻译一句', points: 3, dailyCap: 15 },
+  practice: { label: '答一道练习题', points: 3, dailyCap: 20 },
+  ask: { label: '追问 AI 一次', points: 2, dailyCap: 15 },
+  article: { label: '读完一篇精读', points: 6, dailyCap: 6 },
   listen: { label: '听完一个学习包', points: 10, dailyCap: 6 },
   grammar: { label: '学完一课语法', points: 8, dailyCap: 6 },
-  practice: { label: '答一道练习题', points: 1, dailyCap: 40 },
-  ask: { label: '翻译或追问一次', points: 1, dailyCap: 15 },
   routine: { label: '常读的今日一篇', points: 3, dailyCap: 3 },
   download: { label: '下载一个学习包', points: 2, dailyCap: 10 },
   firstOfDay: { label: '今天第一次学习', points: 10, dailyCap: 1 },
@@ -25,7 +28,7 @@ export const ACTIONS: Record<Action, { label: string; points: number; dailyCap: 
 export const MINUTE_POINTS = 1;
 export const CHEST_SECONDS = 30 * 60;
 export const DRAW_COST = 100;
-export const SOFT_CAP = 120;
+export const SOFT_CAP = 150;
 const IDLE_MS = 60_000;
 const FAST_REVIEW_MS = 1500;
 const PITY_RARE = 10;

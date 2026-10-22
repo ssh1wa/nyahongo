@@ -1,26 +1,30 @@
-// 生词本 + FSRS 复习。复习卡片带原句，学习包还在手机上时可以回放原声。
-import { useVideoPlayer } from 'expo-video';
-import { BookMarked, Trash2, Volume2 } from 'lucide-react-native';
+// 生词本 + FSRS 复习。分「生词」和「已掌握」两个词本：FSRS 判断记得很牢的词自动移到已掌握，也可以手动来回移。
+// 点开一个词：词典释义、原句、AI 详细讲解（第一次点开时生成，存起来）。
+import { BookMarked, CheckCheck, RefreshCw, RotateCcw, Sparkles, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, EmptyState, ScreenHeader, SectionLabel, Title } from '../components/Ui';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RubyText } from '../components/Ruby';
+import { Button, Card, EmptyState, ErrorNote, ScreenHeader, Segmented, SectionLabel, Tag, Title } from '../components/Ui';
 import { EntryView } from '../components/WordSheet';
-import { listLocal, mediaUri } from '../lib/packages';
-import type { PackageMeta } from '../lib/types';
-import { deleteWord, dueWords, GRADES, listWords, previewIntervals, review, stats, type WordRow } from '../lib/wordbook';
+import { wordDetail } from '../lib/wordDetail';
+import {
+  deleteWord, dueWords, GRADES, listWords, MASTERED_STABILITY_DAYS, previewIntervals, review, setMastered, stats,
+  type WordDetail, type WordRow,
+} from '../lib/wordbook';
 import { radius, useColors } from '../theme';
 
 export function WordbookScreen({ active }: { active: boolean }) {
   const c = useColors();
   const [words, setWords] = useState<WordRow[]>([]);
   const [queue, setQueue] = useState<WordRow[] | null>(null);
-  const [packages, setPackages] = useState<Record<string, PackageMeta>>({});
-  const [st, setSt] = useState({ total: 0, due: 0, reviewedToday: 0, streak: 0 });
+  const [st, setSt] = useState({ total: 0, due: 0, reviewedToday: 0, streak: 0, mastered: 0 });
+  const [tab, setTab] = useState<'learning' | 'mastered'>('learning');
+  const [open, setOpen] = useState<WordRow | null>(null);
 
   const refresh = useCallback(async () => {
-    const [w, local, s] = await Promise.all([listWords(), listLocal(), stats()]);
+    const [w, s] = await Promise.all([listWords(), stats()]);
     setWords(w);
-    setPackages(Object.fromEntries(local.map((p) => [p.id, p])));
     setSt(s);
   }, []);
   // 每次切到生词本都刷新：别的页面可能刚加了词
@@ -32,7 +36,6 @@ export function WordbookScreen({ active }: { active: boolean }) {
     return (
       <Review
         queue={queue}
-        packages={packages}
         onDone={() => { setQueue(null); void refresh(); }}
       />
     );
@@ -40,66 +43,235 @@ export function WordbookScreen({ active }: { active: boolean }) {
 
   const now = Date.now();
   const due = st.due;
+  const shown = words.filter((w) => (tab === 'mastered') === w.mastered);
   return (
-    <FlatList
-      data={words}
-      keyExtractor={(w) => String(w.id)}
-      contentContainerStyle={styles.content}
-      ListHeaderComponent={
-        <View style={{ gap: 14, marginBottom: 6 }}>
-          <ScreenHeader kicker="间隔复习 · FSRS" title="生词本" />
-          <Card style={{ gap: 14 }}>
-            <View style={styles.stats}>
-              <Stat value={due} label="待复习" highlight />
-              <Stat value={st.reviewedToday} label="今天已复习" />
-              <Stat value={st.streak} label="连续天数" />
-              <Stat value={st.total} label="总词数" />
-            </View>
-            <Button label={due ? `开始复习（${due}）` : '今天的复习都完成了'} disabled={!due} onPress={begin} />
-          </Card>
-          {words.length ? <SectionLabel>全部生词</SectionLabel> : (
-            <EmptyState
-              icon={<BookMarked size={26} color={c.accent} />}
-              title="生词本还是空的"
-              text="在精听、阅读、翻译里点开一个词，选「加入生词本」。词条来自 JMdict 词典，会带上你遇到它的那句原文。"
-            />
-          )}
-        </View>
-      }
-      renderItem={({ item }) => (
-        <View style={[styles.row, { borderColor: c.line }]}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-              <Text style={{ color: c.ink, fontSize: 17, fontWeight: '700' }}>{item.headword}</Text>
-              <Text style={{ color: c.ruby, fontSize: 13 }}>{item.reading}</Text>
-            </View>
-            <Text numberOfLines={1} style={{ color: c.ink2, fontSize: 13 }}>
-              {item.entry?.senses[0] ? item.entry.senses[0].zh || item.entry.senses[0].en.join('; ') : ''}
-            </Text>
-            <Text style={{ color: c.muted, fontSize: 11.5 }}>
-              {item.due <= now ? '待复习' : `下次复习：${new Date(item.due).toLocaleDateString()}`}
-            </Text>
+    <>
+      <FlatList
+        data={shown}
+        keyExtractor={(w) => String(w.id)}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={
+          <View style={{ gap: 14, marginBottom: 6 }}>
+            <ScreenHeader kicker="间隔复习 · FSRS" title="生词本" />
+            <Card style={{ gap: 14 }}>
+              <View style={styles.stats}>
+                <Stat value={due} label="待复习" highlight />
+                <Stat value={st.reviewedToday} label="今天已复习" />
+                <Stat value={st.streak} label="连续天数" />
+                <Stat value={st.mastered} label="已掌握" />
+              </View>
+              <Button label={due ? `开始复习（${due}）` : '今天的复习都完成了'} disabled={!due} onPress={begin} />
+            </Card>
+            {words.length ? (
+              <Segmented
+                options={[{ value: 'learning', label: `生词 ${st.total}` }, { value: 'mastered', label: `已掌握 ${st.mastered}` }]}
+                value={tab}
+                onChange={setTab}
+              />
+            ) : (
+              <EmptyState
+                icon={<BookMarked size={26} color={c.accent} />}
+                title="生词本还是空的"
+                text="在精听、阅读、翻译里点开一个词，选「加入生词本」。词条来自词典，会带上你遇到它的那句原文。"
+              />
+            )}
+            {words.length && !shown.length ? (
+              <Text selectable style={{ color: c.muted, fontSize: 13, lineHeight: 19 }}>
+                {tab === 'mastered'
+                  ? `还没有掌握的词。复习时一直记得、预计 ${MASTERED_STABILITY_DAYS} 天以上都不会忘的词会自动移到这里，也可以在词的详情里手动移过来。`
+                  : '生词都掌握了。'}
+              </Text>
+            ) : null}
           </View>
-          <Pressable
-            hitSlop={10}
-            onPress={() => Alert.alert('删除生词', `从生词本删除「${item.headword}」？`, [
-              { text: '取消', style: 'cancel' },
-              { text: '删除', style: 'destructive', onPress: async () => { await deleteWord(item.id); void refresh(); } },
-            ])}
-          >
-            <Trash2 size={17} color={c.muted} />
+        }
+        renderItem={({ item }) => (
+          <Pressable onPress={() => setOpen(item)} style={({ pressed }) => [styles.row, { borderColor: c.line, opacity: pressed ? 0.6 : 1 }]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                <Text style={{ color: c.ink, fontSize: 17, fontWeight: '700' }}>{item.headword}</Text>
+                <Text style={{ color: c.ruby, fontSize: 13 }}>{item.reading}</Text>
+              </View>
+              <Text numberOfLines={1} style={{ color: c.ink2, fontSize: 13 }}>
+                {item.entry?.senses[0] ? item.entry.senses[0].zh || item.entry.senses[0].en.join('; ') : ''}
+              </Text>
+              <Text style={{ color: c.muted, fontSize: 11.5 }}>
+                {item.mastered ? '已掌握' : item.due <= now ? '待复习' : `下次复习：${new Date(item.due).toLocaleDateString()}`}
+              </Text>
+            </View>
+            {item.detail ? <Sparkles size={15} color={c.accent} /> : null}
           </Pressable>
-        </View>
-      )}
-    />
+        )}
+      />
+      {open ? (
+        <WordDetailSheet
+          word={open}
+          onClose={() => setOpen(null)}
+          onChanged={(w) => { setOpen(w); void refresh(); }}
+          onDeleted={() => { setOpen(null); void refresh(); }}
+        />
+      ) : null}
+    </>
   );
 }
 
-function Review({ queue, packages, onDone }: { queue: WordRow[]; packages: Record<string, PackageMeta>; onDone: () => void }) {
+// ---------- 词的详情 ----------
+
+function WordDetailSheet({ word, onClose, onChanged, onDeleted }: {
+  word: WordRow; onClose: () => void; onChanged: (w: WordRow) => void; onDeleted: () => void;
+}) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  const [detail, setDetail] = useState<WordDetail | null>(word.detail);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const generate = useCallback(async (force = false) => {
+    setLoading(true); setError('');
+    try {
+      const d = await wordDetail(word, force);
+      setDetail(d);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [word]);
+  // 第一次点开自动生成
+  useEffect(() => { if (!word.detail) void generate(); }, [word.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const move = async () => {
+    await setMastered(word.id, !word.mastered);
+    onChanged({ ...word, mastered: !word.mastered, detail });
+  };
+  const remove = () => Alert.alert('删除生词', `从生词本删除「${word.headword}」？`, [
+    { text: '取消', style: 'cancel' },
+    { text: '删除', style: 'destructive', onPress: async () => { await deleteWord(word.id); onDeleted(); } },
+  ]);
+
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 14 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <Text style={{ color: c.ink, fontSize: 28, fontWeight: '800' }}>{word.headword}</Text>
+              <Text style={{ color: c.ruby, fontSize: 16 }}>{word.reading}</Text>
+              {word.mastered ? <Tag label="已掌握" tone="ok" /> : null}
+            </View>
+          </View>
+          <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>
+        </View>
+        <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 8 }}>
+          {word.context ? (
+            <View style={[styles.context, { backgroundColor: c.surface2 }]}>
+              <Text selectable style={{ color: c.ink, fontSize: 15.5, lineHeight: 24 }}>{word.context}</Text>
+              {word.context_zh ? <Text style={{ color: c.muted, fontSize: 13 }}>{word.context_zh}</Text> : null}
+            </View>
+          ) : null}
+          {word.entry ? (
+            <View style={{ gap: 8 }}>
+              <SectionLabel>词典</SectionLabel>
+              <EntryView entry={word.entry} />
+            </View>
+          ) : null}
+          <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}><SectionLabel>AI 详细讲解</SectionLabel></View>
+              {detail && !loading ? <Pressable onPress={() => generate(true)} hitSlop={8}><RefreshCw size={15} color={c.muted} /></Pressable> : null}
+            </View>
+            {loading ? (
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <ActivityIndicator color={c.accent} />
+                <Text style={{ color: c.muted }}>正在生成释义、用法和例句…</Text>
+              </View>
+            ) : null}
+            {error ? <ErrorNote message={error} /> : null}
+            {error && !loading ? <Button label="重试" kind="secondary" small onPress={() => generate(true)} /> : null}
+            {detail && !loading ? <DetailView detail={detail} /> : null}
+          </View>
+        </ScrollView>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Button
+            label={word.mastered ? '移回生词本' : '移到已掌握'}
+            kind="secondary"
+            onPress={move}
+            icon={word.mastered ? <RotateCcw size={16} color={c.ink} /> : <CheckCheck size={16} color={c.ink} />}
+            style={{ flex: 1 }}
+          />
+          <Button label="删除" kind="danger" onPress={remove} icon={<Trash2 size={16} color={c.err} />} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function DetailView({ detail }: { detail: WordDetail }) {
+  const c = useColors();
+  return (
+    <View style={{ gap: 14 }}>
+      {detail.summary ? <Text selectable style={{ color: c.ink, fontSize: 15, lineHeight: 23, fontWeight: '600' }}>{detail.summary}</Text> : null}
+      {detail.meanings.length ? (
+        <View style={{ gap: 8 }}>
+          {detail.meanings.map((m, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
+              <Text style={{ color: c.muted, width: 16 }}>{i + 1}.</Text>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: c.ink, fontSize: 15 }}>{m.meaning}</Text>
+                {m.note ? <Text selectable style={{ color: c.ink2, fontSize: 13, lineHeight: 19 }}>{m.note}</Text> : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {detail.usage.length ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: c.ink2, fontSize: 13, fontWeight: '700' }}>用法</Text>
+          {detail.usage.map((u, i) => <Text key={i} style={{ color: c.ink, fontSize: 14, lineHeight: 21 }}>・{u}</Text>)}
+        </View>
+      ) : null}
+      {detail.collocations.length ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: c.ink2, fontSize: 13, fontWeight: '700' }}>常见搭配</Text>
+          {detail.collocations.map((x, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+              <Text style={{ color: c.ink, fontSize: 15 }}>{x.text}</Text>
+              <Text style={{ color: c.muted, fontSize: 13.5 }}>{x.zh}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {detail.examples.length ? (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: c.ink2, fontSize: 13, fontWeight: '700' }}>例句</Text>
+          {detail.examples.map((e, i) => (
+            <View key={i} style={{ gap: 2 }}>
+              <RubyText segments={e.segments} size={16} zh={e.zh} />
+              <Text style={{ color: c.muted, fontSize: 13 }}>{e.zh}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {detail.similar.length ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: c.ink2, fontSize: 13, fontWeight: '700' }}>近义词辨析</Text>
+          {detail.similar.map((x, i) => (
+            <Text key={i} style={{ color: c.ink, fontSize: 14, lineHeight: 21 }}><Text selectable style={{ fontWeight: '700' }}>{x.word}</Text>：{x.diff}</Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ---------- 复习 ----------
+
+function Review({ queue, onDone }: { queue: WordRow[]; onDone: () => void }) {
   const c = useColors();
   const [i, setI] = useState(0);
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [masteredNow, setMasteredNow] = useState<string[]>([]);
   const word = queue[i];
 
   if (!word) {
@@ -107,17 +279,19 @@ function Review({ queue, packages, onDone }: { queue: WordRow[]; packages: Recor
       <View style={[styles.content, { flex: 1, justifyContent: 'center', gap: 16 }]}>
         <Title title="复习完成" />
         <Text style={{ color: c.ink2 }}>这一轮复习了 {queue.length} 个词。</Text>
+        {masteredNow.length ? (
+          <Text selectable style={{ color: c.ok, lineHeight: 21 }}>已经记得很牢、移到「已掌握」的词：{masteredNow.join('、')}</Text>
+        ) : null}
         <Button label="回到生词本" onPress={onDone} />
       </View>
     );
   }
 
   const intervals = previewIntervals(word.card);
-  const pkg = word.package_id ? packages[word.package_id] : undefined;
   const grade = async (g: (typeof GRADES)[number]['grade']) => {
     setBusy(true);
     try {
-      await review(word, g);
+      if (await review(word, g)) setMasteredNow((m) => [...m, word.headword]);
       setShown(false);
       setI((n) => n + 1);
     } finally {
@@ -136,10 +310,7 @@ function Review({ queue, packages, onDone }: { queue: WordRow[]; packages: Recor
         <ScrollView contentContainerStyle={{ gap: 14, padding: 16 }}>
         <Text style={{ color: c.ink, fontSize: 34, fontWeight: '800', textAlign: 'center', marginTop: 10 }}>{word.headword}</Text>
         {word.context ? (
-          <Text style={{ color: c.ink2, fontSize: 16, lineHeight: 26, textAlign: 'center' }}>{word.context}</Text>
-        ) : null}
-        {pkg && word.clip_start != null && word.clip_end != null ? (
-          <ClipButton meta={pkg} start={word.clip_start} end={word.clip_end} />
+          <Text selectable style={{ color: c.ink2, fontSize: 16, lineHeight: 26, textAlign: 'center' }}>{word.context}</Text>
         ) : null}
         {shown ? (
           <View style={{ gap: 12, borderTopWidth: 1, borderColor: c.line, paddingTop: 14 }}>
@@ -181,32 +352,13 @@ function Stat({ value, label, highlight }: { value: number; label: string; highl
   );
 }
 
-/** 回放生词所在那一句的原声。 */
-function ClipButton({ meta, start, end }: { meta: PackageMeta; start: number; end: number }) {
-  const c = useColors();
-  const player = useVideoPlayer(mediaUri(meta), (p) => { p.timeUpdateEventInterval = 0.1; });
-  useEffect(() => {
-    const sub = player.addListener('timeUpdate', ({ currentTime }) => {
-      if (player.playing && currentTime >= end + 0.15) player.pause();
-    });
-    return () => sub.remove();
-  }, [player, end]);
-  return (
-    <Pressable
-      onPress={() => { player.currentTime = Math.max(0, start - 0.08); player.play(); }}
-      style={[styles.clip, { backgroundColor: c.accentSoft }]}
-    >
-      <Volume2 size={18} color={c.accent} />
-      <Text style={{ color: c.accent, fontWeight: '700' }}>听原句</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   content: { padding: 18, gap: 10, paddingBottom: 40 },
   stats: { flexDirection: 'row' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   grades: { flexDirection: 'row', gap: 8, marginTop: 12 },
   grade: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, gap: 2 },
-  clip: { flexDirection: 'row', alignSelf: 'center', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet: { maxHeight: '88%', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, gap: 14 },
+  context: { padding: 12, borderRadius: radius.md, gap: 6 },
 });

@@ -3,7 +3,7 @@ import { normalizeSegments } from './furigana';
 import { arr, num, str, strArr } from './llm';
 import type { FuriganaSegment } from './types';
 
-const RUBY_RULES = `
+export const RUBY_RULES = `
 FURIGANA RULES:
 - Every Japanese sentence must be an array of segments: {"text":"学校","reading":"がっこう"}.
 - Put readings only on kanji-bearing segments. Kana, punctuation, Latin letters and numbers use null.
@@ -12,7 +12,7 @@ FURIGANA RULES:
 - Split at natural word/okurigana boundaries, e.g. [{"text":"食","reading":"た"},{"text":"べます","reading":null}].
 `;
 
-const segs = (v: unknown): FuriganaSegment[] => normalizeSegments(Array.isArray(v) ? v : []);
+export const segs = (v: unknown): FuriganaSegment[] => normalizeSegments(Array.isArray(v) ? v : []);
 
 export type Example = { japanese: FuriganaSegment[]; chinese: string };
 const examples = (v: unknown): Example[] =>
@@ -55,11 +55,21 @@ Return JSON only in this exact shape:
   "grammar":[{"pattern":"...","meaning":"中文含义","explanation":"清晰简短的中文讲解","example":[{"text":"...","reading":"... or null"}],"exampleMeaning":"中文例句含义"}]
 }`;
 
-export function shapeTranslation(raw: any, source: string): TranslationResult {
-  // 方向以模型判断为准；模型没给或给错时按原文是否含假名来猜
+export type TranslateDirection = 'auto' | TranslationResult['direction'];
+
+/** 手动选了方向时，告诉模型别自己判断（只有汉字的短句很容易判断错） */
+export const translationPrompt = (dir: TranslateDirection) =>
+  dir === 'auto'
+    ? TRANSLATION_PROMPT
+    : `${TRANSLATION_PROMPT}
+
+The user has chosen the direction manually: direction MUST be "${dir}". Treat the input as ${dir === 'zh-ja' ? 'Simplified Chinese and translate it into Japanese' : 'Japanese and translate it into Simplified Chinese'}, even if it looks like the other language.`;
+
+export function shapeTranslation(raw: any, source: string, forced: TranslateDirection = 'auto'): TranslationResult {
+  // 方向以模型判断为准；模型没给或给错时按原文是否含假名来猜。手动选了方向就以手动为准
   const looksJapanese = /[぀-ヿ]/.test(source);
-  const direction: TranslationResult['direction'] =
-    raw?.direction === 'ja-zh' || raw?.direction === 'zh-ja' ? raw.direction : looksJapanese ? 'ja-zh' : 'zh-ja';
+  const direction: TranslationResult['direction'] = forced !== 'auto' ? forced
+    : raw?.direction === 'ja-zh' || raw?.direction === 'zh-ja' ? raw.direction : looksJapanese ? 'ja-zh' : 'zh-ja';
   return {
     direction,
     translationJapanese: direction === 'zh-ja' ? segs(raw?.translationJapanese) : [],

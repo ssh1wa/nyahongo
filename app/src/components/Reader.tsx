@@ -87,6 +87,8 @@ export function Reader({ id, initial, onBack }: { id: number; initial: Article; 
                 <Pressable
                   key={i}
                   onPress={() => s.segments && setSelected({ p, i })}
+                  onLongPress={() => {}} // 长按留给句子里的选词
+                  delayLongPress={400}
                   style={[styles.sentence, on && { backgroundColor: c.accentSoft }]}
                 >
                   {s.segments
@@ -151,11 +153,11 @@ function SentenceSheet({ sentence, level, onClose }: { sentence: ReadingSentence
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 14 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <View style={{ flex: 1 }}><RubyText segments={sentence.segments!} size={21} /></View>
+          <View style={{ flex: 1 }}><RubyText segments={sentence.segments!} size={21} zh={sentence.zh} /></View>
           <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>
         </View>
         <ScrollView style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 14 }} keyboardShouldPersistTaps="handled">
-          {sentence.zh ? <Text style={{ color: c.ink2, fontSize: 15, lineHeight: 22 }}>{sentence.zh}</Text> : null}
+          {sentence.zh ? <Text selectable style={{ color: c.ink2, fontSize: 15, lineHeight: 22 }}>{sentence.zh}</Text> : null}
           {sentence.words?.length ? (
             <View style={{ gap: 8 }}>
               <SectionLabel>重点词（点开查词典）</SectionLabel>
@@ -176,7 +178,7 @@ function SentenceSheet({ sentence, level, onClose }: { sentence: ReadingSentence
               {sentence.grammar.map((g, i) => (
                 <View key={i} style={[styles.grammar, { borderColor: c.line }]}>
                   <Tag label={g.pattern} tone="accent" />
-                  <Text style={{ color: c.ink2, fontSize: 14, lineHeight: 21 }}>{g.explanation}</Text>
+                  <Text selectable style={{ color: c.ink2, fontSize: 14, lineHeight: 21 }}>{g.explanation}</Text>
                 </View>
               ))}
             </View>
@@ -184,10 +186,10 @@ function SentenceSheet({ sentence, level, onClose }: { sentence: ReadingSentence
           {asks.map((a, i) => (
             <View key={i} style={[styles.answer, { backgroundColor: c.surface2 }]}>
               <Text style={{ color: c.muted, fontSize: 12.5 }}>问：{a.question}</Text>
-              <Text style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{a.answer}</Text>
+              <Text selectable style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{a.answer}</Text>
               {a.examples.map((ex, j) => (
                 <View key={j} style={{ gap: 2 }}>
-                  <RubyText segments={ex.japanese} size={16} />
+                  <RubyText segments={ex.japanese} size={16} zh={ex.chinese} />
                   <Text style={{ color: c.muted, fontSize: 12.5 }}>{ex.chinese}</Text>
                 </View>
               ))}

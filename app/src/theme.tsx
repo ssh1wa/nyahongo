@@ -97,5 +97,8 @@ export const useScale = () => useContext(ThemeContext).scale;
 
 export const radius = { sm: 8, md: 12, lg: 16, xl: 22 };
 
+/** 平板、横屏时内容的最大宽度：再宽一行字太长，不好读 */
+export const CONTENT_MAX = 760;
+
 // 不用 'serif'：有的安卓系统自带的衬线中文字体缺字（实测小米上「貞」显示不出来）
 export const fonts = { jaSerif: undefined as string | undefined };

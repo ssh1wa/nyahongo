@@ -2,11 +2,12 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { BookMarked, BookOpenText, GraduationCap, Headphones, Languages } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markActive, setForeground, tick } from './src/lib/game';
 import { NavContext, type Nav, type TabId } from './src/nav';
 import { SpriteProvider } from './src/game/Sprites';
+import { SelectionProvider } from './src/components/Selection';
 import { CatRoomScreen } from './src/screens/CatRoomScreen';
 import { GrammarScreen } from './src/screens/GrammarScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
@@ -15,7 +16,7 @@ import { ReadingScreen } from './src/screens/ReadingScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { TranslateScreen } from './src/screens/TranslateScreen';
 import { WordbookScreen } from './src/screens/WordbookScreen';
-import { ThemeProvider, useColors } from './src/theme';
+import { CONTENT_MAX, ThemeProvider, useColors } from './src/theme';
 
 const TABS: Array<{ id: TabId; label: string; Icon: typeof Languages }> = [
   { id: 'translate', label: '翻译', Icon: Languages },
@@ -28,6 +29,9 @@ const TABS: Array<{ id: TabId; label: string; Icon: typeof Languages }> = [
 function Main() {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const win = useWindowDimensions();
+  // 横屏：标签栏放到左边竖着排，把高度留给内容
+  const rail = win.width > win.height;
   const [tab, setTab] = useState<TabId>('translate');
   const [playing, setPlaying] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,26 +66,29 @@ function Main() {
 
   return (
     <NavContext.Provider value={nav}>
+      <SelectionProvider>
       {/* 只观察触摸、不拦截：用来判断用户是不是在操作 */}
       <View style={{ flex: 1 }} onStartShouldSetResponderCapture={() => { markActive(); return false; }}>
       <StatusBar style={c.dark ? 'light' : 'dark'} />
-      <View style={[styles.root, { backgroundColor: c.bg, paddingTop: insets.top }]}>
-        <View style={{ flex: 1 }}>
-          {TABS.map(({ id }) => (mounted.has(id) ? (
-            <View key={id} style={[StyleSheet.absoluteFill, { display: tab === id ? 'flex' : 'none' }]}>
-              {id === 'translate' ? <TranslateScreen /> : null}
-              {id === 'reading' ? <ReadingScreen /> : null}
-              {id === 'listen' ? <LibraryScreen active={tab === 'listen'} /> : null}
-              {id === 'grammar' ? <GrammarScreen /> : null}
-              {id === 'words' ? <WordbookScreen active={tab === 'words'} /> : null}
-            </View>
-          ) : null))}
+      <View style={[styles.root, { backgroundColor: c.bg, paddingTop: insets.top, flexDirection: rail ? 'row-reverse' : 'column' }]}>
+        <View style={{ flex: 1, paddingRight: rail ? insets.right : 0 }}>
+          <View style={styles.page}>
+            {TABS.map(({ id }) => (mounted.has(id) ? (
+              <View key={id} style={[StyleSheet.absoluteFill, { display: tab === id ? 'flex' : 'none' }]}>
+                {id === 'translate' ? <TranslateScreen /> : null}
+                {id === 'reading' ? <ReadingScreen /> : null}
+                {id === 'listen' ? <LibraryScreen active={tab === 'listen'} /> : null}
+                {id === 'grammar' ? <GrammarScreen /> : null}
+                {id === 'words' ? <WordbookScreen active={tab === 'words'} /> : null}
+              </View>
+            ) : null))}
+          </View>
         </View>
-        <View style={[styles.tabs, { borderColor: c.line, backgroundColor: c.surface, paddingBottom: insets.bottom + 6 }]}>
+        <View style={[rail ? styles.rail : styles.tabs, { borderColor: c.line, backgroundColor: c.surface }, rail ? { paddingLeft: insets.left + 4 } : { paddingBottom: insets.bottom + 6 }]}>
           {TABS.map(({ id, label, Icon }) => {
             const on = tab === id;
             return (
-              <Pressable key={id} onPress={() => goTab(id)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+              <Pressable key={id} onPress={() => goTab(id)} style={rail ? styles.railTab : styles.tab} accessibilityRole="tab" accessibilityState={{ selected: on }}>
                 {/* 背景色始终要设（未选中时透明）：安卓上中途才加背景色时圆角会失效，变成直角方块 */}
                 <View style={[styles.pill, { backgroundColor: on ? c.accentSoft : 'transparent' }]}>
                   <Icon size={21} color={on ? c.accent : c.muted} strokeWidth={on ? 2.3 : 1.9} />
@@ -93,9 +100,10 @@ function Main() {
         </View>
       </View>
       {playing ? <View style={StyleSheet.absoluteFill}><PlayerScreen id={playing} onClose={closePlayer} /></View> : null}
-      {settingsOpen ? <View style={StyleSheet.absoluteFill}><SettingsScreen onBack={closeSettings} /></View> : null}
-      {catRoomOpen ? <View style={StyleSheet.absoluteFill}><CatRoomScreen onBack={closeCatRoom} /></View> : null}
+      {settingsOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><SettingsScreen onBack={closeSettings} /></View></View> : null}
+      {catRoomOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><CatRoomScreen onBack={closeCatRoom} /></View></View> : null}
       </View>
+      </SelectionProvider>
     </NavContext.Provider>
   );
 }
@@ -113,8 +121,11 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },
   root: { flex: 1 },
   tabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
   tab: { flex: 1, alignItems: 'center', gap: 3 },
+  rail: { borderRightWidth: StyleSheet.hairlineWidth, paddingHorizontal: 6, justifyContent: 'center', gap: 10 },
+  railTab: { alignItems: 'center', gap: 3, paddingVertical: 4 },
   pill: { width: 56, height: 30, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
 });

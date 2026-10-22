@@ -20,10 +20,10 @@ export function FollowUpPanel({ turns, loading, onAsk }: { turns: FollowUp[]; lo
       {turns.map((t, i) => (
         <View key={i} style={[styles.turn, { backgroundColor: c.surface2 }]}>
           <Text style={{ color: c.muted, fontSize: 12.5 }}>问：{t.question}</Text>
-          <Text style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{t.answer}</Text>
+          <Text selectable style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{t.answer}</Text>
           {t.examples.map((ex, j) => (
             <View key={j} style={{ gap: 2 }}>
-              <RubyText segments={ex.japanese} size={16} />
+              <RubyText segments={ex.japanese} size={16} zh={ex.chinese} />
               <Text style={{ color: c.muted, fontSize: 12.5 }}>{ex.chinese}</Text>
             </View>
           ))}

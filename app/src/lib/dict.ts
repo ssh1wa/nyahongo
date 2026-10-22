@@ -141,3 +141,50 @@ export async function translateEntry(e: DictEntry): Promise<DictEntry> {
   await kvSet(`zh:${e.id}`, senses);
   return { ...e, senses: e.senses.map((s, i) => ({ ...s, zh: s.zh || senses[i] })) };
 }
+
+/** AI 释义词条的 id：不是 JMdict 词条，存进生词本时不占 entry_id（按写法去重） */
+export const AI_ENTRY_ID = 0;
+
+/**
+ * 离线词典查不到的词（人名、新词、网络用语、整个短语、活用得认不出原形的词），让 AI 结合原句给一个简短释义。
+ * 做成和词典词条一样的结构，查词面板和生词本都能直接显示。结果按「写法 + 原句」缓存，同一处不重复花钱。
+ */
+export async function aiGloss(text: string, context?: string, contextZh?: string): Promise<DictEntry> {
+  const key = `ai-gloss:${text}|${context ?? ''}`;
+  const cached = await kvGet<DictEntry | null>(key, null);
+  if (cached) return cached;
+  const settings = await loadLlmSettings();
+  const raw = await requestJson(settings, [
+    {
+      role: 'system',
+      content:
+        '你是日语词典编辑。学习者选中了一个离线词典查不到的日语词或短语（可能是人名地名、新词、网络用语、固定说法、活用形，也可能选多了或选少了几个字）。' +
+        '结合原句给出简洁准确的中文释义。base 写辞书形/原形（短语就写短语本身）；reading 只用平假名；pos 用中文词性（如 名词、动词、形容词、短语、人名）；' +
+        'meanings 写 1~3 条中文释义，只写在这句话里说得通的意思，不要编造；note 用一句话补充说明（比如是什么的活用、口语/网络用法、选中的部分不成词时应该怎么选），没有就写空字符串。' +
+        '如果选中的其实是中文而不是日语，meanings 里给出对应的日语说法。' +
+        '只返回 JSON：{"base":"","reading":"","pos":"","meanings":[""],"note":""}',
+    },
+    { role: 'user', content: JSON.stringify({ selected: text, sentence: context ?? null, sentenceTranslation: contextZh ?? null }) },
+  ], (r) => r, { temperature: 0.2, maxTokens: 800 });
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const meanings: string[] = Array.isArray(raw?.meanings) ? raw.meanings.map(str).filter(Boolean) : [];
+  if (!meanings.length) throw new Error('AI 没有给出释义，请重试');
+  const base = str(raw?.base) || text;
+  const reading = toHiragana(str(raw?.reading));
+  const pos = str(raw?.pos);
+  const note = str(raw?.note);
+  const entry: DictEntry = {
+    id: AI_ENTRY_ID,
+    kanji: [base],
+    readings: reading && reading !== base ? [reading] : [],
+    common: false,
+    senses: meanings.map((m, i) => ({
+      pos: i === 0 && pos ? [pos] : [],
+      tags: i === 0 ? ['AI 释义'] : [],
+      en: i === meanings.length - 1 && note ? [note] : [],
+      zh: m,
+    })),
+  };
+  await kvSet(key, entry);
+  return entry;
+}

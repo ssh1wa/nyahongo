@@ -12,13 +12,14 @@ import {
 } from '../lib/grammar';
 import { loadLlmSettings, saveLevel } from '../lib/settings';
 import { radius, useColors } from '../theme';
+import { AskScreen } from './AskScreen';
 import { PracticeScreen } from './PracticeScreen';
 
 type Route = { kind: 'course' } | { kind: 'unit'; index: number } | { kind: 'lesson'; id: string; unit?: number };
 
 export function GrammarScreen() {
   const c = useColors();
-  const [tab, setTab] = useState<'course' | 'practice'>('course');
+  const [tab, setTab] = useState<'course' | 'practice' | 'ask'>('course');
   const [level, setLevel] = useState<GrammarLevel>('N4');
   const [course, setCourse] = useState<Unit[] | null | undefined>(undefined);
   const [progress, setProgress] = useState<Record<string, Progress>>({});
@@ -75,10 +76,10 @@ export function GrammarScreen() {
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.top}>
-        <ScreenHeader kicker="语法" title={tab === 'course' ? '语法课程' : '一句一练'} />
-        <Segmented options={[{ value: 'course', label: '课程' }, { value: 'practice', label: '练习' }]} value={tab} onChange={setTab} />
+        <ScreenHeader kicker="语法" title={tab === 'course' ? '语法课程' : tab === 'practice' ? '一句一练' : '问 AI'} />
+        <Segmented options={[{ value: 'course', label: '课程' }, { value: 'practice', label: '练习' }, { value: 'ask', label: '问 AI' }]} value={tab} onChange={setTab} />
       </View>
-      {tab === 'practice' ? <PracticeScreen embedded /> : (
+      {tab === 'practice' ? <PracticeScreen embedded /> : tab === 'ask' ? <AskScreen /> : (
         <Course
           level={level}
           setLevel={(lv) => { setLevel(lv); void saveLevel(lv); }}
@@ -210,7 +211,7 @@ function UnitView({ unit, index, progress, zh, onBack, onOpen }: {
       <View style={{ gap: 4 }}>
         <Text style={{ color: c.accent, fontSize: 12, fontWeight: '700' }}>第 {index + 1} 单元</Text>
         <Text style={{ color: c.ink, fontSize: 24, fontWeight: '800' }}>{unit.title}</Text>
-        <Text style={{ color: c.ink2, lineHeight: 20 }}>{unit.theme}</Text>
+        <Text selectable style={{ color: c.ink2, lineHeight: 20 }}>{unit.theme}</Text>
       </View>
       {unit.ids.map((id) => <PointRow key={id} id={id} status={progress[id]?.status} meaning={zh[id]} onPress={() => onOpen(id)} />)}
     </ScrollView>
@@ -249,7 +250,7 @@ function LessonView({ id, onBack }: { id: string; onBack: () => void }) {
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 6 }}><Tag label={id.slice(0, 2)} tone="accent" /></View>
         <Text style={{ color: c.ink, fontSize: 28, fontWeight: '800' }}>{cleanTitle(p.title)}</Text>
-        {lesson ? <Text style={{ color: c.ink, fontSize: 17, lineHeight: 25 }}>{lesson.meaning}</Text> : <Text style={{ color: c.muted }}>{p.short}</Text>}
+        {lesson ? <Text selectable style={{ color: c.ink, fontSize: 17, lineHeight: 25 }}>{lesson.meaning}</Text> : <Text style={{ color: c.muted }}>{p.short}</Text>}
       </View>
 
       {error ? (
@@ -263,23 +264,23 @@ function LessonView({ id, onBack }: { id: string; onBack: () => void }) {
         <>
           <Card style={{ gap: 6 }}>
             <SectionLabel>接续</SectionLabel>
-            <Text style={{ color: c.ink, fontSize: 15.5, lineHeight: 23 }}>{lesson.formation}</Text>
+            <Text selectable style={{ color: c.ink, fontSize: 15.5, lineHeight: 23 }}>{lesson.formation}</Text>
           </Card>
           <View style={{ gap: 6 }}>
             <SectionLabel>讲解</SectionLabel>
-            <Text style={{ color: c.ink2, fontSize: 15, lineHeight: 24 }}>{lesson.explanation}</Text>
+            <Text selectable style={{ color: c.ink2, fontSize: 15, lineHeight: 24 }}>{lesson.explanation}</Text>
           </View>
           {lesson.nuance ? (
             <View style={[styles.callout, { backgroundColor: c.accentSoft }]}>
               <Text style={{ color: c.accent, fontWeight: '700', fontSize: 13 }}>语感与区别</Text>
-              <Text style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{lesson.nuance}</Text>
+              <Text selectable style={{ color: c.ink, fontSize: 14.5, lineHeight: 22 }}>{lesson.nuance}</Text>
             </View>
           ) : null}
           <View style={{ gap: 10 }}>
             <SectionLabel>例句</SectionLabel>
             {lesson.examples.map((e, i) => (
               <View key={i} style={[styles.example, { borderColor: c.line }]}>
-                <RubyText segments={e.japanese} size={18} />
+                <RubyText segments={e.japanese} size={18} zh={e.chinese} />
                 <Text style={{ color: c.muted, fontSize: 13.5 }}>{e.chinese}</Text>
               </View>
             ))}
@@ -313,7 +314,7 @@ function LessonView({ id, onBack }: { id: string; onBack: () => void }) {
                         );
                       })}
                     </View>
-                    {picked !== undefined && q.explanation ? <Text style={{ color: c.ink2, fontSize: 13.5, lineHeight: 20 }}>{q.explanation}</Text> : null}
+                    {picked !== undefined && q.explanation ? <Text selectable style={{ color: c.ink2, fontSize: 13.5, lineHeight: 20 }}>{q.explanation}</Text> : null}
                   </Card>
                 );
               })}
@@ -328,7 +329,7 @@ function LessonView({ id, onBack }: { id: string; onBack: () => void }) {
 
           <View style={{ gap: 6 }}>
             <SectionLabel>原始资料（Hanabira）</SectionLabel>
-            <Text style={{ color: c.muted, fontSize: 12.5, lineHeight: 19 }}>{p.long}</Text>
+            <Text selectable style={{ color: c.muted, fontSize: 12.5, lineHeight: 19 }}>{p.long}</Text>
           </View>
           <Button label="重新生成这一课" kind="ghost" small onPress={() => load(true)} icon={<RefreshCw size={14} color={c.ink2} />} />
         </>

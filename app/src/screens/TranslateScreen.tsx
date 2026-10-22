@@ -6,10 +6,11 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInpu
 import { FollowUpPanel } from '../components/FollowUpPanel';
 import { RubyText } from '../components/Ruby';
 import { LookupSheet, type LookupWord } from '../components/LookupSheet';
-import { Button, Card, ErrorNote, ScreenHeader, SectionLabel } from '../components/Ui';
+import { Button, Card, ErrorNote, ScreenHeader, SectionLabel, Segmented } from '../components/Ui';
 import { useNav } from '../nav';
 import { requestJson } from '../lib/llm';
-import { followUpPrompt, shapeFollowUp, shapeTranslation, TRANSLATION_PROMPT, type FollowUp, type TranslationResult } from '../lib/prompts';
+import { followUpPrompt, shapeFollowUp, shapeTranslation, translationPrompt, type FollowUp, type TranslateDirection, type TranslationResult } from '../lib/prompts';
+import { kvGet, kvSet } from '../lib/db';
 import { addRecord, listRecords, updateRecord, type RecordRow } from '../lib/records';
 import { loadLlmSettings } from '../lib/settings';
 import { radius, useColors } from '../theme';
@@ -29,6 +30,10 @@ export function TranslateScreen() {
   const [askLoading, setAskLoading] = useState(false);
   const [error, setError] = useState('');
   const [history, setHistory] = useState<Array<RecordRow<Saved>>>([]);
+  // 翻译方向：默认自动识别；手动选的方向记住
+  const [dir, setDir] = useState<TranslateDirection>('auto');
+  useEffect(() => { void kvGet<TranslateDirection>('translateDir', 'auto').then(setDir); }, []);
+  const chooseDir = (d: TranslateDirection) => { setDir(d); void kvSet('translateDir', d); };
 
   const loadHistory = useCallback(() => listRecords<Saved>('translation', 20).then(setHistory), []);
   useEffect(() => { void loadHistory(); }, [loadHistory]);
@@ -42,10 +47,10 @@ export function TranslateScreen() {
     setError('');
     try {
       const result = await requestJson(settings, [
-        { role: 'system', content: TRANSLATION_PROMPT },
+        { role: 'system', content: translationPrompt(dir) },
         { role: 'user', content: query },
-      ], (raw) => shapeTranslation(raw, query), { temperature: 0.25 });
-      award('ask');
+      ], (raw) => shapeTranslation(raw, query, dir), { temperature: 0.25 });
+      award('translate');
       const saved = { query, result, followUps: [] };
       setCurrent(saved);
       setRecordId(await addRecord('translation', query, saved));
@@ -94,10 +99,15 @@ export function TranslateScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader kicker="中文 ⇄ 日本語" title="翻译" />
         <Card style={{ gap: 12 }}>
+          <Segmented
+            options={[{ value: 'auto', label: '自动识别' }, { value: 'zh-ja', label: '中 → 日' }, { value: 'ja-zh', label: '日 → 中' }]}
+            value={dir}
+            onChange={chooseDir}
+          />
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="输入中文或日文句子"
+            placeholder={dir === 'zh-ja' ? '输入中文句子' : dir === 'ja-zh' ? '输入日文句子' : '输入中文或日文句子'}
             placeholderTextColor={c.muted}
             multiline
             textAlignVertical="top"
@@ -111,10 +121,12 @@ export function TranslateScreen() {
         {r && current ? (
           <View style={{ gap: 18 }}>
             <View style={[styles.result, { borderColor: c.ink }]}>
-              <Text style={{ color: c.muted, fontSize: 12 }}>{r.direction === 'zh-ja' ? '日语译文' : '中文译文'} · 原文：{current.query}</Text>
-              {r.direction === 'zh-ja' ? <RubyText segments={r.translationJapanese} size={22} serif /> : <Text selectable style={{ color: c.ink, fontSize: 19, lineHeight: 28 }}>{r.translationChinese}</Text>}
-              {r.naturalNote ? <Text selectable style={{ color: c.ink2, fontSize: 13.5, lineHeight: 20 }}>{r.naturalNote}</Text> : null}
+              <Text selectable style={{ color: c.muted, fontSize: 12 }}>
+                {r.direction === 'zh-ja' ? '日语译文' : '中文译文'} · 原文：{current.query}
+              </Text>
+              {r.direction === 'zh-ja' ? <RubyText segments={r.translationJapanese} size={22} serif zh={current.query} /> : <Text selectable style={{ color: c.ink, fontSize: 19, lineHeight: 28 }}>{r.translationChinese}</Text>}
             </View>
+
 
             {r.words.length ? (
               <View style={{ gap: 6 }}>
@@ -138,6 +150,14 @@ export function TranslateScreen() {
               </View>
             ) : null}
 
+            {/* 语感说明放到词汇下面，译文区只留译文 */}
+            {r.naturalNote ? (
+              <View style={{ gap: 6 }}>
+                <SectionLabel>语感说明</SectionLabel>
+                <Text selectable style={{ color: c.ink2, fontSize: 14, lineHeight: 21 }}>{r.naturalNote}</Text>
+              </View>
+            ) : null}
+
             {r.grammar.length ? (
               <View style={{ gap: 10 }}>
                 <SectionLabel>语法</SectionLabel>
@@ -145,10 +165,10 @@ export function TranslateScreen() {
                   <Card key={i} style={{ gap: 6 }}>
                     <Text style={{ color: c.ink, fontSize: 16, fontWeight: '800' }}>{g.pattern}</Text>
                     {g.meaning ? <Text style={{ color: c.accent, fontSize: 13, fontWeight: '700' }}>{g.meaning}</Text> : null}
-                    <Text style={{ color: c.ink2, fontSize: 14, lineHeight: 21 }}>{g.explanation}</Text>
+                    <Text selectable style={{ color: c.ink2, fontSize: 14, lineHeight: 21 }}>{g.explanation}</Text>
                     {g.example.length ? (
                       <View style={[styles.example, { backgroundColor: c.surface2 }]}>
-                        <RubyText segments={g.example} size={16} />
+                        <RubyText segments={g.example} size={16} zh={g.exampleMeaning} />
                         {g.exampleMeaning ? <Text style={{ color: c.muted, fontSize: 12.5 }}>{g.exampleMeaning}</Text> : null}
                       </View>
                     ) : null}

@@ -1,6 +1,7 @@
-// 生词本 + FSRS 间隔复习。词条内容来自 JMdict（学习包里的 dictionary.json），不让 AI 编词条。
+// 生词本 + FSRS 间隔复习。词条内容来自 JMdict（学习包里的 dictionary.json）；只有词典查不到的词才用 AI 释义，并标明「AI 释义」。
 import { createEmptyCard, fsrs, generatorParameters, Rating, TypeConvert, type Card, type Grade } from 'ts-fsrs';
 import { getDb } from './db';
+import { AI_ENTRY_ID } from './dict';
 import { award } from './game';
 import type { DictEntry, Sentence, Token } from './types';
 
@@ -20,17 +21,38 @@ export type WordRow = {
   card: Card;
   due: number;
   added_at: number;
+  mastered: boolean; // 已掌握：不再出现在复习里，单独一个词本
+  detail: WordDetail | null; // AI 详细释义（缓存）
 };
 
-type RawRow = Omit<WordRow, 'entry' | 'card'> & { entry: string | null; card: string };
+/** AI 生成的详细释义。日语例句是注音分段；英语单词的例句 reading 都是 null */
+export type WordDetail = {
+  summary: string;
+  meanings: Array<{ meaning: string; note: string }>;
+  usage: string[];
+  collocations: Array<{ text: string; zh: string }>;
+  examples: Array<{ segments: Array<{ text: string; reading?: string | null }>; zh: string }>;
+  similar: Array<{ word: string; diff: string }>;
+};
+
+type RawRow = Omit<WordRow, 'entry' | 'card' | 'mastered' | 'detail'> & { entry: string | null; card: string; mastered: number; detail: string | null };
 
 function parse(row: RawRow): WordRow {
+  let detail: WordDetail | null = null;
+  try { detail = row.detail ? (JSON.parse(row.detail) as WordDetail) : null; } catch {}
   return {
     ...row,
     entry: row.entry ? (JSON.parse(row.entry) as DictEntry) : null,
     card: TypeConvert.card(JSON.parse(row.card)),
+    mastered: !!row.mastered,
+    detail,
   };
 }
+
+/** FSRS 预测的记忆稳定性（天）达到这么久、并且至少复习过这么多次，就算掌握了 */
+export const MASTERED_STABILITY_DAYS = 60;
+export const MASTERED_MIN_REPS = 4;
+const isMastered = (card: Card) => card.stability >= MASTERED_STABILITY_DAYS && card.reps >= MASTERED_MIN_REPS;
 
 export async function isSaved(entryId: number | undefined | null): Promise<boolean> {
   if (entryId == null) return false;
@@ -52,13 +74,15 @@ export type NewWord = {
 /** 加入生词本。同一个 JMdict 词条只收一次，已存在则返回 false。 */
 export async function addWord(w: NewWord): Promise<boolean> {
   const db = await getDb();
-  if (w.entry && (await isSaved(w.entry.id))) return false;
-  if (!w.entry && (await db.getFirstAsync('SELECT 1 FROM words WHERE entry_id IS NULL AND headword = ?', w.headword))) return false;
+  // AI 释义的词条（id 0）不是词典词条，和没有词条的词一样按写法去重
+  const entryId = w.entry && w.entry.id !== AI_ENTRY_ID ? w.entry.id : null;
+  if (entryId != null && (await isSaved(entryId))) return false;
+  if (entryId == null && (await db.getFirstAsync('SELECT 1 FROM words WHERE entry_id IS NULL AND headword = ?', w.headword))) return false;
   const card = createEmptyCard(new Date());
   await db.runAsync(
     `INSERT INTO words (entry_id, headword, reading, entry, context, context_zh, package_id, clip_start, clip_end, card, due, added_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    w.entry?.id ?? null,
+    entryId,
     w.headword,
     w.reading,
     w.entry ? JSON.stringify(w.entry) : null,
@@ -91,15 +115,16 @@ export function addFromToken(token: Token, entry: DictEntry | null, sentence: Se
 }
 
 /** 生词本统计：总数、到期数、今天复习过的数量、连续学习天数。 */
-export async function stats(): Promise<{ total: number; due: number; reviewedToday: number; streak: number }> {
+export async function stats(): Promise<{ total: number; due: number; reviewedToday: number; streak: number; mastered: number }> {
   const db = await getDb();
   const now = Date.now();
   const start = new Date(); start.setHours(0, 0, 0, 0);
-  const [t, d, r, days] = await Promise.all([
-    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words'),
-    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE due <= ?', now),
+  const [t, d, r, days, m] = await Promise.all([
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE mastered = 0'),
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE due <= ? AND mastered = 0', now),
     db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM review_log WHERE reviewed_at >= ?', start.getTime()),
     db.getAllAsync<{ d: string }>("SELECT DISTINCT date(reviewed_at / 1000, 'unixepoch', 'localtime') AS d FROM review_log ORDER BY d DESC LIMIT 400"),
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE mastered = 1'),
   ]);
   // 连续天数：从今天（或昨天）往前数
   const set = new Set(days.map((x) => x.d));
@@ -108,7 +133,7 @@ export async function stats(): Promise<{ total: number; due: number; reviewedTod
   if (!set.has(key(day))) day.setDate(day.getDate() - 1);
   let streak = 0;
   while (set.has(key(day))) { streak++; day.setDate(day.getDate() - 1); }
-  return { total: t?.n ?? 0, due: d?.n ?? 0, reviewedToday: r?.n ?? 0, streak };
+  return { total: t?.n ?? 0, due: d?.n ?? 0, reviewedToday: r?.n ?? 0, streak, mastered: m?.n ?? 0 };
 }
 
 export async function listWords(): Promise<WordRow[]> {
@@ -119,13 +144,13 @@ export async function listWords(): Promise<WordRow[]> {
 
 export async function dueWords(limit = 50): Promise<WordRow[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<RawRow>('SELECT * FROM words WHERE due <= ? ORDER BY due LIMIT ?', Date.now(), limit);
+  const rows = await db.getAllAsync<RawRow>('SELECT * FROM words WHERE due <= ? AND mastered = 0 ORDER BY due LIMIT ?', Date.now(), limit);
   return rows.map(parse);
 }
 
 export async function countDue(): Promise<number> {
   const db = await getDb();
-  const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE due <= ?', Date.now());
+  const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM words WHERE due <= ? AND mastered = 0', Date.now());
   return row?.n ?? 0;
 }
 
@@ -158,15 +183,30 @@ function formatInterval(ms: number): string {
   return m < 12 ? `${m} 个月` : `${(d / 365).toFixed(1)} 年`;
 }
 
-export async function review(word: WordRow, grade: Grade): Promise<void> {
+/** 复习一次。返回 true 表示这次之后算掌握了（自动移到「已掌握」） */
+export async function review(word: WordRow, grade: Grade): Promise<boolean> {
   const db = await getDb();
   const now = new Date();
   const { card } = scheduler.next(word.card, now, grade);
+  const mastered = isMastered(card);
   await db.withTransactionAsync(async () => {
-    await db.runAsync('UPDATE words SET card = ?, due = ? WHERE id = ?', JSON.stringify(card), card.due.getTime(), word.id);
+    await db.runAsync('UPDATE words SET card = ?, due = ?, mastered = ? WHERE id = ?', JSON.stringify(card), card.due.getTime(), mastered ? 1 : 0, word.id);
     await db.runAsync('INSERT INTO review_log (word_id, rating, reviewed_at) VALUES (?, ?, ?)', word.id, grade, now.getTime());
   });
   award('review'); // 不看评分，免得为了小判乱按
+  return mastered;
+}
+
+/** 手动在「生词」和「已掌握」之间移动。移回生词时，明天就会出现在复习里 */
+export async function setMastered(id: number, mastered: boolean): Promise<void> {
+  const db = await getDb();
+  if (mastered) await db.runAsync('UPDATE words SET mastered = 1 WHERE id = ?', id);
+  else await db.runAsync('UPDATE words SET mastered = 0, due = MIN(due, ?) WHERE id = ?', Date.now() + 86_400_000, id);
+}
+
+export async function saveDetail(id: number, detail: WordDetail): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE words SET detail = ? WHERE id = ?', JSON.stringify(detail), id);
 }
 
 export async function deleteWord(id: number): Promise<void> {

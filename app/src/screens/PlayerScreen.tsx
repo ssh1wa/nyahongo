@@ -3,7 +3,7 @@ import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ChevronLeft, Pause, Play, Repeat, RotateCcw, SkipBack, SkipForward, StopCircle } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TokenText } from '../components/Ruby';
 import { WordSheet } from '../components/WordSheet';
@@ -16,6 +16,8 @@ import { radius, useColors, useTheme } from '../theme';
 type ZhMode = 'show' | 'tap' | 'hidden';
 const RATES = [0.75, 0.9, 1, 1.25];
 const PREROLL = 0.08; // 跳到句首时稍微提前一点，Whisper 的起始时间常常偏晚
+
+const noop = () => {};
 
 function fmt(sec: number) {
   const s = Math.max(0, Math.floor(sec));
@@ -54,6 +56,8 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const c = useColors();
   const { prefs } = useTheme();
   const insets = useSafeAreaInsets();
+  const win = useWindowDimensions();
+  const wide = win.width > win.height && win.width >= 640;
   const { meta, sentences, dictionary } = data;
   const isVideo = meta.media_type === 'video';
   const english = meta.lang === 'en'; // 英语模式（测试版）：双语字幕，没有注音
@@ -181,24 +185,20 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const zhLabel = { show: '译文 显示', tap: '译文 点开', hidden: '译文 隐藏' }[zhMode];
 
   const renderLine = useCallback(({ item, index }: { item: Sentence; index: number }) => (
-    <Pressable onPress={() => playSentence(index)} style={[styles.line, index === idx && { backgroundColor: c.accentSoft }]}>
+    <Pressable onPress={() => playSentence(index)} onLongPress={noop} delayLongPress={400} style={[styles.line, index === idx && { backgroundColor: c.accentSoft }]}>
       <Text style={[styles.lineTime, { color: index === idx ? c.accent : c.muted }]}>{fmt(item.start)}</Text>
       <View style={{ flex: 1, gap: 2 }}>
-        <TokenText tokens={item.tokens} size={16} showRuby={showRuby} />
+        <TokenText tokens={item.tokens} size={16} showRuby={showRuby} zh={item.zh ?? undefined} />
         {item.zh && zhMode === 'show' ? <Text style={{ color: c.muted, fontSize: 12.5 }}>{item.zh}</Text> : null}
       </View>
     </Pressable>
   ), [idx, c, showRuby, zhMode, playSentence]);
 
-  return (
-    <View style={[styles.root, { backgroundColor: c.bg, paddingTop: insets.top }]}>
-      <View style={styles.head}>
-        <Pressable onPress={onClose} hitSlop={10} style={styles.iconBtn}><ChevronLeft size={24} color={c.ink} /></Pressable>
-        <Text numberOfLines={1} style={[styles.title, { color: c.ink }]}>{meta.title}</Text>
-      </View>
-
+  // 视频 + 当前句 + 播放控制：竖屏在字幕上方，横屏在左边
+  const nowPanel = (
+    <>
       {isVideo ? (
-        <Pressable onPress={togglePlay} style={styles.video}>
+        <Pressable onPress={togglePlay} style={[styles.video, wide && { aspectRatio: undefined, height: Math.round(win.height * 0.5) }]}>
           <VideoView player={player} style={StyleSheet.absoluteFill} nativeControls={false} contentFit="contain" />
         </Pressable>
       ) : null}
@@ -217,6 +217,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
               showRuby={showRuby}
               highlight={word?.sentence === idx ? word.token : null}
               onPressToken={(t) => { player.pause(); setWord({ sentence: idx, token: t }); }}
+              zh={cur.zh ?? undefined}
             />
             {cur.zh && zhMode !== 'hidden' ? (
               <Pressable onPress={() => setZhRevealed((v) => !v)} disabled={zhMode === 'show'}>
@@ -225,7 +226,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
                   : <Text style={[styles.zh, { color: c.muted }]}>点击显示译文</Text>}
               </Pressable>
             ) : null}
-            <Text style={[styles.meta, { color: c.muted }]}>第 {idx + 1} / {sentences.length} 句 · {fmt(cur.start)} · 点单词查词典</Text>
+            <Text style={[styles.meta, { color: c.muted }]}>第 {idx + 1} / {sentences.length} 句 · {fmt(cur.start)} · {english ? '点单词查词典' : '点单词查词典，长按选词'}</Text>
           </>
         ) : (
           <Text style={{ color: c.muted }}>点播放开始，或者点下面任意一句</Text>
@@ -254,22 +255,37 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
         {hasZh ? <Chip label={zhLabel} onPress={cycleZh} /> : null}
         <Text style={{ color: c.muted, fontSize: 11.5 }}>{loop ? '单句循环中' : autoPause ? '每句读完暂停' : ''}</Text>
       </View>
+    </>
+  );
 
-      <FlatList
-        ref={listRef}
-        data={sentences}
-        keyExtractor={(s) => String(s.id)}
-        renderItem={renderLine}
-        extraData={[idx, showRuby, zhMode]}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: insets.bottom + 24 }}
-        onScrollBeginDrag={() => { userScrolledAt.current = Date.now(); }}
-        onScrollToIndexFailed={({ index }) => {
-          setTimeout(() => listRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: false }), 100);
-        }}
-        initialNumToRender={20}
-        windowSize={11}
-      />
+  return (
+    <View style={[styles.root, { backgroundColor: c.bg, paddingTop: insets.top }]}>
+      <View style={styles.head}>
+        <Pressable onPress={onClose} hitSlop={10} style={styles.iconBtn}><ChevronLeft size={24} color={c.ink} /></Pressable>
+        <Text numberOfLines={1} style={[styles.title, { color: c.ink }]}>{meta.title}</Text>
+      </View>
+
+      {/* 横屏 / 平板：左边视频和当前句，右边整篇字幕 */}
+      <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
+        {wide
+          ? <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 12 }}>{nowPanel}</ScrollView>
+          : nowPanel}
+        <FlatList
+          ref={listRef}
+          data={sentences}
+          keyExtractor={(s) => String(s.id)}
+          renderItem={renderLine}
+          extraData={[idx, showRuby, zhMode]}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: insets.bottom + 24 }}
+          onScrollBeginDrag={() => { userScrolledAt.current = Date.now(); }}
+          onScrollToIndexFailed={({ index }) => {
+            setTimeout(() => listRef.current?.scrollToIndex({ index, viewPosition: 0.3, animated: false }), 100);
+          }}
+          initialNumToRender={20}
+          windowSize={11}
+        />
+      </View>
 
       {word ? (
         <WordSheet

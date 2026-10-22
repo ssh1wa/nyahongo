@@ -1,6 +1,6 @@
 // 猫の部屋：房间（猫自由活动）、开宝箱、图鉴（64 件，都有日语名和例句）、今天的学习、规则；「布置房间」进入编辑模式
 import * as Haptics from 'expo-haptics';
-import { Check, ChevronLeft, Coins, Gift, Paintbrush, Sparkles, X } from 'lucide-react-native';
+import { BarChart3, Check, ChevronLeft, CircleHelp, Coins, Gift, Paintbrush, Sparkles, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Animated, BackHandler, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,9 +12,9 @@ import { CatPortrait, ChestAnimation, ItemIcon, SceneThumb } from '../game/Sprit
 import { ITEMS, ITEM_BY_ID, KIND_LABEL, parseRubyLine, RARITY, type Item, type ItemKind } from '../lib/catalog';
 import {
   ACTIONS, CHEST_SECONDS, DRAW_COST, draw, exchange, MINUTE_POINTS, moveFurniture, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
-  setScene, SOFT_CAP, toggleFurniture, toggleRoomCat, type Action, type DrawResult, type GameState,
+  localDate, setScene, SOFT_CAP, toggleFurniture, toggleRoomCat, type Action, type DrawResult, type GameState,
 } from '../lib/game';
-import { radius, useColors } from '../theme';
+import { CONTENT_MAX, radius, useColors } from '../theme';
 
 const nameSegments = (i: Item) => (/[一-鿿]/.test(i.ja) ? [{ text: i.ja, reading: i.kana }] : [{ text: i.ja }]);
 const coins = (n: number) => Math.floor(n);
@@ -25,7 +25,8 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const game = useGame();
-  const [tab, setTab] = useState<'book' | 'today' | 'rules'>('book');
+  const [tab, setTab] = useState<ItemKind>('cat');
+  const [info, setInfo] = useState<'today' | 'rules' | null>(null);
   const [result, setResult] = useState<DrawResult | null>(null);
   const [detail, setDetail] = useState<Item | null>(null);
   const [opening, setOpening] = useState(false);
@@ -55,7 +56,7 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
   if (!game) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
   const canDraw = game.chests > 0 || game.coins >= DRAW_COST;
   const nextChestMin = Math.ceil((CHEST_SECONDS - game.chestSeconds) / 60);
-  const roomWidth = width - 32;
+  const roomWidth = Math.min(width, CONTENT_MAX) - 32;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
@@ -63,6 +64,12 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
         <Pressable onPress={() => (editing ? setEditing(false) : onBack())} hitSlop={10} style={styles.back}><ChevronLeft size={26} color={c.ink} /></Pressable>
         <Text style={{ color: c.ink, fontSize: 20, fontWeight: '800' }}>{editing ? '布置房间' : '猫の部屋'}</Text>
         <Text style={{ color: c.muted, fontSize: 13, marginLeft: 6, flex: 1 }}>{editing ? '' : 'ねこのへや'}</Text>
+        {editing ? null : (
+          <>
+            <Pressable onPress={() => setInfo('today')} hitSlop={6} style={styles.headIcon} accessibilityLabel="今天的学习"><BarChart3 size={21} color={c.ink2} /></Pressable>
+            <Pressable onPress={() => setInfo('rules')} hitSlop={6} style={styles.headIcon} accessibilityLabel="规则"><CircleHelp size={21} color={c.ink2} /></Pressable>
+          </>
+        )}
         {editing
           ? <Button label="完成" small onPress={() => setEditing(false)} icon={<Check size={15} color={c.accentInk} />} />
           : <Button label="布置" kind="secondary" small onPress={() => setEditing(true)} icon={<Paintbrush size={15} color={c.ink} />} />}
@@ -97,10 +104,15 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
             {!canDraw ? <Text style={{ color: c.muted, fontSize: 12, textAlign: 'center' }}>小判还差 {Math.ceil(DRAW_COST - game.coins)}，去学一会儿吧</Text> : null}
           </Card>
 
-          <Segmented options={[{ value: 'book', label: '图鉴' }, { value: 'today', label: '今天' }, { value: 'rules', label: '规则' }]} value={tab} onChange={setTab} />
-          {tab === 'book' ? <Book game={game} onPick={setDetail} /> : null}
-          {tab === 'today' ? <Today game={game} /> : null}
-          {tab === 'rules' ? <Rules /> : null}
+          <Segmented
+            options={(['cat', 'hat', 'scene', 'furniture'] as ItemKind[]).map((k) => {
+              const list = ITEMS.filter((i) => i.kind === k);
+              return { value: k, label: `${KIND_LABEL[k]} ${list.filter((i) => game.owned[i.id]).length}/${list.length}` };
+            })}
+            value={tab}
+            onChange={setTab}
+          />
+          <Book game={game} kind={tab} onPick={setDetail} />
         </ScrollView>
       )}
 
@@ -115,6 +127,9 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
         />
       ) : null}
       {detail ? <ItemSheet item={detail} game={game} onClose={() => setDetail(null)} /> : null}
+      {info ? <InfoSheet title={info === 'today' ? '今天的学习' : '小判和宝箱的规则'} onClose={() => setInfo(null)}>
+        {info === 'today' ? <Today game={game} /> : <Rules />}
+      </InfoSheet> : null}
     </View>
   );
 }
@@ -268,14 +283,12 @@ function Tile({ on, onPress, label, children }: { on: boolean; onPress: () => vo
 
 // ---------- 图鉴 ----------
 
-function Book({ game, onPick }: { game: GameState; onPick: (i: Item) => void }) {
+function Book({ game, kind, onPick }: { game: GameState; kind: ItemKind; onPick: (i: Item) => void }) {
   const c = useColors();
   const section = (kind: ItemKind) => {
     const list = ITEMS.filter((i) => i.kind === kind);
-    const owned = list.filter((i) => game.owned[i.id]).length;
     return (
       <View key={kind} style={{ gap: 8 }}>
-        <SectionLabel>{`${KIND_LABEL[kind]} ${owned} / ${list.length}`}</SectionLabel>
         <View style={styles.grid}>
           {list.map((i) => {
             const has = !!game.owned[i.id];
@@ -294,7 +307,7 @@ function Book({ game, onPick }: { game: GameState; onPick: (i: Item) => void }) 
   };
   return (
     <View style={{ gap: 16 }}>
-      {(['cat', 'hat', 'scene', 'furniture'] as ItemKind[]).map(section)}
+      {section(kind)}
       <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>点开看日语名字和例句。没收集到的可以用毛玉换：普通 {RARITY.common.cost}、稀有 {RARITY.rare.cost}、史诗 {RARITY.epic.cost}、传说 {RARITY.legendary.cost}。</Text>
     </View>
   );
@@ -402,11 +415,33 @@ function RevealModal({ result, game, canAgain, onAgain, onClose }: {
   );
 }
 
-// ---------- 今天 / 规则 ----------
+// ---------- 今天 / 规则（右上角两个图标打开） ----------
+
+function InfoSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <View style={[styles.sheet, { backgroundColor: c.bg, paddingBottom: insets.bottom + 16, maxHeight: '82%' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ flex: 1, color: c.ink, fontSize: 17, fontWeight: '800' }}>{title}</Text>
+          <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>
+        </View>
+        <ScrollView contentContainerStyle={{ gap: 12 }}>{children}</ScrollView>
+      </View>
+    </Modal>
+  );
+}
 
 function Today({ game }: { game: GameState }) {
   const c = useColors();
-  const days = [{ date: game.today.date, seconds: game.today.seconds, points: game.today.points }, ...game.history].slice(0, 14).reverse();
+  // 固定 14 个日历日（没学习的那天是空柱），不然只有两天记录时两根柱子会被拉得很宽
+  const byDate = new Map([game.today, ...game.history].map((d) => [d.date, d.seconds]));
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const date = localDate(new Date(Date.now() - (13 - i) * 86400000));
+    return { date, seconds: byDate.get(date) ?? 0 };
+  });
   const max = Math.max(60, ...days.map((d) => d.seconds));
   const counts = Object.entries(game.today.counts).filter(([k, v]) => v && k !== 'firstOfDay') as Array<[Action, number]>;
   return (
@@ -471,6 +506,7 @@ function Rules() {
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingRight: 16, height: 56 },
   back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  headIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, gap: 14 },
   roomFrame: { borderWidth: 1, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center' },
   statRow: { flexDirection: 'row', gap: 10 },
