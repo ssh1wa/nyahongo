@@ -10,9 +10,9 @@ import { Button, Card, Segmented, SectionLabel, Tag } from '../components/Ui';
 import { RoomView } from '../game/Room';
 import { Storeroom, type StoreTarget } from '../game/Storeroom';
 import { CatPortrait, ChestAnimation, ItemIcon, SceneThumb } from '../game/Sprites';
-import { ITEMS, ITEM_BY_ID, KIND_LABEL, parseRubyLine, RARITY, type Item, type ItemKind } from '../lib/catalog';
+import { ITEMS, ITEM_BY_ID, KIND_LABEL, parseRubyLine, RARITY, RARITY_ORDER, type Item, type ItemKind, type Rarity } from '../lib/catalog';
 import {
-  ACTIONS, CHEST_SECONDS, BUY_COST, buyChest, canOpen, dayTotals, draw, OPEN_COST, exchange, MINUTE_POINTS, moveFurniture, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
+  ACTIONS, CHEST_SECONDS, BUY_COST, buyChest, canOpen, dayTotals, draw, OPEN_COST, exchange, MINUTE_POINTS, moveFurniture, PITY_EPIC, PITY_RARE, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
   localDate, setScene, SOFT_CAP, toggleFurniture, toggleRoomCat, type Action, type DrawResult, type GameState,
 } from '../lib/game';
 import { CONTENT_MAX, radius, useColors } from '../theme';
@@ -487,25 +487,71 @@ function Today({ game }: { game: GameState }) {
   );
 }
 
+/** 规则说明：数字都从 game.ts、catalog.ts 的常量里取，改了数值这里跟着变 */
 function Rules() {
   const c = useColors();
-  return (
-    <Card style={{ gap: 10 }}>
-      <Text style={{ color: c.ink, fontWeight: '700' }}>怎么得小判</Text>
-      <Text style={{ color: c.ink2, fontSize: 13, lineHeight: 20 }}>
-        有效学习每分钟 {MINUTE_POINTS} 小判（App 开着、并且 1 分钟内有操作；精听播放时不用点屏幕）。每学满 30 分钟掉一个宝箱，也可以花 {BUY_COST} 小判买一个；开一个宝箱花 {OPEN_COST} 小判。
-      </Text>
-      {(Object.keys(ACTIONS) as Action[]).map((k) => (
-        <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ color: c.ink2, fontSize: 13 }}>{ACTIONS[k].label}</Text>
-          <Text style={{ color: c.muted, fontSize: 13 }}>+{ACTIONS[k].points}（每天最多 {ACTIONS[k].dailyCap} 次）</Text>
-        </View>
+  const counts = Object.fromEntries(RARITY_ORDER.map((r) => [r, ITEMS.filter((i) => i.rarity === r).length])) as Record<Rarity, number>;
+  const h = (t: string) => <Text style={{ color: c.ink, fontSize: 15, fontWeight: '800' }}>{t}</Text>;
+  const p = (t: React.ReactNode) => <Text style={{ color: c.ink2, fontSize: 13, lineHeight: 20 }}>{t}</Text>;
+  const row = (cells: React.ReactNode[], head = false) => (
+    <View style={[styles.tableRow, { borderColor: c.line }]}>
+      {cells.map((x, i) => (
+        <Text key={i} style={{ flex: i === 0 ? 1.2 : 1, color: head ? c.muted : c.ink, fontSize: 12.5, fontWeight: head ? '600' : '500', textAlign: i === 0 ? 'left' : 'right' }}>{x}</Text>
       ))}
-      <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
-        复习不看对错，按真实情况评分就好。连续快速点过（每张不到 1.5 秒）不算。一天超过 {SOFT_CAP} 小判后，后面的减半——每天学一点比一次学很多更好。{'\n'}
-        宝箱只有一种，开到什么在打开时就定了：普通 {RARITY.common.weight}%、稀有 {RARITY.rare.weight}%、史诗 {RARITY.epic.weight}%、传说 {RARITY.legendary.weight}%，猫、饰品、场景、家具都在里面。连续 10 次没出稀有，下一次必出；50 次必出史诗以上。重复的会变成毛玉。
-      </Text>
-    </Card>
+    </View>
+  );
+  return (
+    <>
+      <Card style={{ gap: 8 }}>
+        {h('小判怎么来')}
+        {p(`有效学习每分钟 ${MINUTE_POINTS} 个：App 开着、1 分钟内有操作就算（精听播放时不用点屏幕）。下面这些学习行为另外加：`)}
+        {(Object.keys(ACTIONS) as Action[]).map((k) => (
+          <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ color: c.ink2, fontSize: 13 }}>{ACTIONS[k].label}</Text>
+            <Text style={{ color: c.muted, fontSize: 13 }}>+{ACTIONS[k].points}（每天最多 {ACTIONS[k].dailyCap} 次）</Text>
+          </View>
+        ))}
+        <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
+          · 复习按真实情况评分就好，不看对错；连续快速点过（每张不到 1.5 秒）不算{'\n'}
+          · 一天超过 {SOFT_CAP} 小判后，再赚的减半：每天学一点，比一次学很多划算
+        </Text>
+      </Card>
+
+      <Card style={{ gap: 8 }}>
+        {h('宝箱')}
+        {p(`· 每学满 30 分钟，仓库里多一个宝箱\n· 也可以花 ${BUY_COST} 小判添一个（点仓库的空地板）\n· 开一个宝箱花 ${OPEN_COST} 小判（点仓库里的宝箱）`)}
+        {p('所有宝箱都一样，开到什么是打开那一刻抽的。猫、饰品、场景、家具都在同一个池子里。')}
+      </Card>
+
+      <Card style={{ gap: 6 }}>
+        {h('稀有度')}
+        {row(['稀有度', '概率', '件数', '重复得毛玉'], true)}
+        {RARITY_ORDER.map((r) => row([
+          <Text key="n" style={{ color: RARITY[r].color, fontWeight: '800' }}>{RARITY[r].label}</Text>,
+          `${RARITY[r].weight}%`,
+          `${counts[r]} 件`,
+          `${RARITY[r].shards}`,
+        ]))}
+        <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
+          抽中某个稀有度后，从这个稀有度里挑一件；还没收集到的东西出现的机会更大。
+        </Text>
+      </Card>
+
+      <Card style={{ gap: 8 }}>
+        {h('保底')}
+        {p(`· 稀有保底：连续 ${PITY_RARE - 1} 次只开到普通，第 ${PITY_RARE} 次必出稀有或更好（稀有 80%、史诗约 17%、传说约 3%）\n· 史诗保底：连续 ${PITY_EPIC - 1} 次没开到史诗以上，第 ${PITY_EPIC} 次必出史诗或传说（传说 15%）\n· 开到稀有以上，稀有保底重新计数；开到史诗以上，史诗保底也重新计数`)}
+      </Card>
+
+      <Card style={{ gap: 6 }}>
+        {h('毛玉')}
+        {p('开到已经有的东西，会按稀有度变成毛玉（见上表）。攒够了，在图鉴里点开还没收集到的东西，就能用毛玉直接换：')}
+        {row(['稀有度', '换一件要'], true)}
+        {RARITY_ORDER.map((r) => row([
+          <Text key="n" style={{ color: RARITY[r].color, fontWeight: '800' }}>{RARITY[r].label}</Text>,
+          `${RARITY[r].cost} 毛玉`,
+        ]))}
+      </Card>
+    </>
   );
 }
 
@@ -516,6 +562,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 14 },
   roomFrame: { borderWidth: 1, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center' },
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderBottomWidth: StyleSheet.hairlineWidth },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { width: '23%', flexGrow: 1, maxWidth: '24%', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, borderRadius: radius.md, borderWidth: 1.5, gap: 2 },
   check: { position: 'absolute', top: 4, right: 4, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', zIndex: 1 },

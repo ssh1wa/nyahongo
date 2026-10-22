@@ -41,8 +41,8 @@ export const canOpen = (s: Pick<GameState, 'chests' | 'coins'>) => s.chests > 0 
 export const SOFT_CAP = 150;
 const IDLE_MS = 60_000;
 const FAST_REVIEW_MS = 1500;
-const PITY_RARE = 10;
-const PITY_EPIC = 50;
+export const PITY_RARE = 10;
+export const PITY_EPIC = 50;
 
 type Day = { date: string; seconds: number; points: number; counts: Partial<Record<Action, number>>; keys: string[] };
 

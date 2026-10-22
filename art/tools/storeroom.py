@@ -1,7 +1,7 @@
 """猫屋的仓库（蔵）：宝箱、小判、毛玉都放在这里。点宝箱开箱，点空的位置花小判添一个宝箱。
 
-- storeroom_bg.png：仓库背景 160×72（木梁、白墙、腰板、木地板，不放杂物）。小判、毛玉靠墙放在后面，前面专门堆宝箱
-- store_chest.png、store_chest_big.png：后排、前排的宝箱（21×17、26×21）× 3 帧（0 静止，1 盖子上闪一下，2 轻轻跳一下），近大远小
+- storeroom_bg.png：仓库背景 160×72（木梁、白墙、腰板、木地板，不放杂物）。小判、毛玉靠墙放在右上角，前面专门堆宝箱
+- store_chest.png、store_chest_big.png：后排、前排的宝箱（24×19、30×24）× 3 帧（0 静止，1 盖子上闪一下，2 轻轻跳一下），近大远小
 - store_koban.png：放小判的三方（木台）32×24 × 3 帧（0 空，1 一小堆，2 堆满）
 - store_yarn.png：装毛玉的竹篮 28×22 × 3 帧（0 空，1 两三个，2 装满）
 
@@ -26,17 +26,19 @@ FLOOR = 30
 OUT = Path(__file__).resolve().parents[1] / "storeroom"
 LINE = "#3A2E2A"
 
-CHEST_W, CHEST_H = 21, 17  # 后排的宝箱
-BIG_W, BIG_H = 26, 21  # 前排的宝箱：近一点，稍微大一点
-# 宝箱的位置（左上角）和大小（L 大 / S 小），按出现的顺序：先摆满最前面一排，再往后摆
+CHEST_W, CHEST_H = 24, 19  # 后排的宝箱
+BIG_W, BIG_H = 30, 24  # 前排的宝箱：近一点，稍微大一点
+# 宝箱的位置（左上角）和大小（L 大 / S 小），按出现的顺序：先摆满前排，再往后摆。
+# 后排只在左半边（右边靠墙放着小判和毛玉）
 SPOTS = [
-    (62, 47, "L"), (101, 45, "L"), (24, 48, "L"),
-    (48, 34, "S"), (82, 31, "S"), (116, 35, "S"), (32, 35, "S"),
+    (65, 46, "L"), (112, 44, "L"), (20, 47, "L"),
+    (44, 31, "S"), (70, 29, "S"), (18, 32, "S"),
 ]
+# 小判和毛玉靠墙放在右上角，底边贴着地板最后面一点
 KOBAN_W, KOBAN_H = 32, 24
-KOBAN_AT = (6, 16)  # 靠墙放着，后面
+KOBAN_AT = (90, 12)
 YARN_W, YARN_H = 28, 22
-YARN_AT = (126, 18)
+YARN_AT = (128, 14)
 
 
 # ---------------------------------------------------------------- 背景
@@ -225,7 +227,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for k, im in sheets().items():
         im.save(OUT / f"{k}.png")
-    shots = [preview(0, 0, 0), preview(3, 1, 1), preview(7, 2, 2)]
+    shots = [preview(0, 0, 0), preview(3, 1, 1), preview(6, 2, 2)]
     full = Image.new("RGBA", (W * 4, (H * 4 + 8) * len(shots)), (40, 34, 30, 255))
     for i, s in enumerate(shots):
         full.paste(s.resize((W * 4, H * 4), Image.NEAREST), (0, i * (H * 4 + 8)))

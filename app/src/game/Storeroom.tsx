@@ -1,4 +1,4 @@
-// 猫屋的仓库（蔵）：小判（左边三方上）和毛玉（右边竹篮里）靠墙放在后面，前面的地板上随手堆着宝箱，近大远小。
+// 猫屋的仓库（蔵）：小判（三方上）和毛玉（竹篮里）靠墙放在右上角，前面的地板上随手堆着宝箱，近大远小。
 // 点宝箱开箱，点空地板添一个宝箱，点小判、毛玉看说明。素材和摆放位置见 art/tools/storeroom.py
 import { Canvas } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -80,10 +80,10 @@ export function Storeroom({ width, coins, chests, shards, onPress }: {
           );
         })}
 
-        {/* 数量：小判、毛玉在它们上方，宝箱数在墙上 */}
+        {/* 数量：小判、毛玉在它们上方，宝箱数在左边墙上 */}
         <Badge text={`小判 ${Math.floor(coins)}`} cx={(kx + kw / 2) * s} top={(ky + 6) * s - 22} />
         <Badge text={`毛玉 ${shards}`} cx={(yx + yw / 2) * s} top={(yy + 6) * s - 22} />
-        {chests > 0 ? <Badge text={`宝箱 ${chests}`} cx={80 * s} top={10 * s} /> : null}
+        {chests > 0 ? <Badge text={`宝箱 ${chests}`} cx={36 * s} top={12 * s} /> : null}
       </View>
     </View>
   );
