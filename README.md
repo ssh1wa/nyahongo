@@ -140,3 +140,7 @@ art/   猫に小判的像素美术：art/tools/ 里的 Python 脚本用代码画
 - 语法点：[Hanabira](https://hanabira.org) 开源日语语法库（`app/src/data/grammar.json`，去掉了罗马音），署名后可免费使用；课程编排、中文讲解和练习题由 AI 基于这些资料生成
 - 复习算法：FSRS（[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)，MIT）
 - 语音识别：[faster-whisper](https://github.com/SYSTRAN/faster-whisper)；分词：SudachiPy
+
+## 许可证
+
+本项目按 [PolyForm Noncommercial License 1.0.0](LICENSE) 授权：个人学习、研究、非营利用途可以自由使用、修改和分享，**禁止商业用途**。需要商用请联系作者。上面列出的第三方数据按各自的许可证使用。
