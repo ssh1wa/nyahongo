@@ -20,7 +20,8 @@ export type LlmSettings = {
 
 export const DEFAULT_LLM: LlmSettings = {
   baseUrl: 'https://api.deepinfra.com/v1/openai',
-  model: 'deepseek-ai/DeepSeek-V4.1-Flash',
+  // 固定版本：DeepInfra 上不带日期的 DeepSeek-V4.1-Flash 长回答经常排队卡住
+  model: 'deepseek-ai/DeepSeek-V4.1-Flash-1017',
   apiKey: '',
   visionModel: 'Qwen/Qwen3-VL-235B-A22B-Instruct',
   visionBaseUrl: '',
@@ -41,8 +42,12 @@ async function writeSecret(name: string, value: string): Promise<void> {
   else await SecureStore.deleteItemAsync(name);
 }
 
+/** 以前的默认模型，读设置时换成 DEFAULT_LLM.model */
+const STALLING_MODELS = ['deepseek-ai/DeepSeek-V4.1-Flash'];
+
 export async function loadLlmSettings(): Promise<LlmSettings> {
   const saved = await kvGet<Partial<LlmSettings>>('llm', {});
+  if (saved.model && STALLING_MODELS.includes(saved.model)) saved.model = DEFAULT_LLM.model;
   const [apiKey, visionApiKey] = await Promise.all([readSecret(KEY_NAME), readSecret(VISION_KEY_NAME)]);
   return { ...DEFAULT_LLM, ...saved, apiKey, visionApiKey };
 }

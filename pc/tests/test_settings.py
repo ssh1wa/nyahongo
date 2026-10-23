@@ -56,3 +56,10 @@ def test_phone_cannot_read_or_change_settings(cfg_file, phone):
     assert phone.get("/api/settings").status_code == 403
     assert phone.put("/api/settings", json={"llm": {"api_key": "x"}}).status_code == 403
     assert phone.post("/api/open-folder", json={"which": "library"}).status_code == 403
+
+
+def test_stalling_default_model_is_replaced(cfg_file):
+    cfg_file.write_text('[llm]\nmodel = "deepseek-ai/DeepSeek-V4.1-Flash"\n', encoding="utf-8")
+    assert config.load_config().llm.model == config.DEFAULT_MODEL
+    cfg_file.write_text('[llm]\nmodel = "deepseek-chat"\n', encoding="utf-8")
+    assert config.load_config().llm.model == "deepseek-chat"  # 自己选的模型不动

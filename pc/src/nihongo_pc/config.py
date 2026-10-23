@@ -32,11 +32,16 @@ class WhisperConfig:
     hf_mirror: bool = False  # 模型从国内镜像 hf-mirror.com 下载
 
 
+# DeepInfra 上不带日期的 DeepSeek-V4.1-Flash 长回答经常排队卡住，固定版本没这个问题
+DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+_STALLING_MODELS = {"deepseek-ai/DeepSeek-V4.1-Flash"}
+
+
 @dataclass
 class LlmConfig:
     base_url: str = "https://api.deepinfra.com/v1/openai"
     api_key: str = ""  # 留空则读环境变量 NIHONGO_LLM_API_KEY
-    model: str = ""
+    model: str = DEFAULT_MODEL
 
     def key(self) -> str:
         return self.api_key or os.environ.get("NIHONGO_LLM_API_KEY", "")
@@ -89,4 +94,6 @@ def load_config(path: Path | None = None) -> Config:
         setattr(cfg.whisper, key, value)
     for key, value in data.get("llm", {}).items():
         setattr(cfg.llm, key, value)
+    if cfg.llm.model in _STALLING_MODELS:
+        cfg.llm.model = DEFAULT_MODEL
     return cfg
