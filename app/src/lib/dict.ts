@@ -1,7 +1,10 @@
-// 手机离线词典：从电脑下载 JMdict（含电脑上已经翻译好的中文释义），按原形+读音查词。
+// 手机离线词典：JMdict（含预先翻译好的常用词中文释义）预装在 APK 里，第一次用时复制到手机存储，按原形+读音查词。
 // 没有中文释义的词条，查到时再让 AI 只翻译英文义项（和 PC 端同样的规则），结果存在手机上。
+// 词典文件由 pc/tools/export_phone_dict.py 生成（不进 git），版本信息在 data/dictInfo.json。
+import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as SQLite from 'expo-sqlite';
+import BUNDLED from '../data/dictInfo.json';
 import { kvGet, kvSet } from './db';
 import { toHiragana } from './furigana';
 import { requestJson } from './llm';
@@ -10,65 +13,55 @@ import type { DictEntry } from './types';
 
 const DIR = new Directory(Paths.document, 'dict');
 const NAME = 'jmdict.sqlite';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const BUNDLED_FILE = require('../../assets/dict/jmdict.sqlite');
 
 export type DictInfo = { version: string; entries: number; zh: number; size: number };
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let installing: Promise<void> | null = null;
 
 export async function localDictInfo(): Promise<DictInfo | null> {
   if (!new File(DIR, NAME).exists) return null;
   return kvGet<DictInfo | null>('dictInfo', null);
 }
 
-function openDict(): Promise<SQLite.SQLiteDatabase> | null {
-  if (!new File(DIR, NAME).exists) return null;
+/** 预装的词典还没复制到手机存储（或者 App 更新带来了新版词典）时复制一份。打开 App 时就在后台调用。 */
+export function ensureDict(): Promise<void> {
+  installing ??= (async () => {
+    const info = await kvGet<DictInfo | null>('dictInfo', null);
+    if (new File(DIR, NAME).exists && info?.version === BUNDLED.version) return;
+    const asset = await Asset.fromModule(BUNDLED_FILE).downloadAsync(); // 从 APK 里取出到缓存目录
+    if (!asset.localUri) throw new Error('读取预装词典失败');
+    if (dbPromise) {
+      try { (await dbPromise).closeSync(); } catch {}
+      dbPromise = null;
+    }
+    // 词典目录里只放这一个词典：整个清掉重建，旧版本和上次中断留下的文件都不会挡路
+    if (DIR.exists) DIR.delete();
+    DIR.create({ intermediates: true });
+    // 用复制而不是 move / rename：这两个在小米手机上实测行为和文档不一致（文件没挪走、重名报错）
+    const src = new File(asset.localUri);
+    const target = new File(DIR, NAME);
+    src.copy(target);
+    if (!target.exists || target.size !== src.size) throw new Error('词典复制不完整，下次打开会重试');
+    // 缓存目录里取出来的那份、以前失败时留下的那份都删掉，省得多占 76 MB
+    for (const f of [src, new File(Paths.cache, NAME)]) {
+      try { if (f.exists) f.delete(); } catch {}
+    }
+    await kvSet('dictInfo', BUNDLED); // 最后才记版本：中途被杀掉的话下次打开会重来
+  })();
+  installing.catch(() => { installing = null; });
+  return installing;
+}
+
+export async function openDict(): Promise<SQLite.SQLiteDatabase | null> {
+  try { await ensureDict(); } catch { return null; }
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync(NAME, { useNewConnection: true }, DIR.uri);
     dbPromise.catch(() => { dbPromise = null; });
   }
   return dbPromise;
-}
-
-export async function remoteDictInfo(pcUrl: string): Promise<DictInfo & { exists: boolean }> {
-  const res = await fetch(`${pcUrl}/api/dictionary`);
-  if (!res.ok) throw new Error(`PC 端返回错误 HTTP ${res.status}`);
-  return res.json();
-}
-
-/** 从电脑下载离线词典。先下到临时文件，完整下完再替换，下载中断不会弄坏旧词典。 */
-export async function downloadDict(pcUrl: string, onProgress: (f: number) => void, signal?: AbortSignal): Promise<DictInfo> {
-  const info = await remoteDictInfo(pcUrl);
-  if (!info.exists) throw new Error('电脑上还没有生成离线词典');
-  if (!DIR.exists) DIR.create({ intermediates: true });
-  const tmp = new File(DIR, `${NAME}.part`);
-  if (tmp.exists) tmp.delete();
-  await File.downloadFileAsync(`${pcUrl}/api/dictionary/file`, tmp, {
-    idempotent: true,
-    signal,
-    onProgress: ({ bytesWritten, totalBytes }) => onProgress(Math.min(bytesWritten / (totalBytes > 0 ? totalBytes : info.size || 1), 0.999)),
-  });
-  // 关掉旧连接再替换文件
-  if (dbPromise) {
-    try { (await dbPromise).closeSync(); } catch {}
-    dbPromise = null;
-  }
-  const target = new File(DIR, NAME);
-  if (target.exists) target.delete();
-  tmp.rename(NAME);
-  const local: DictInfo = { version: info.version, entries: info.entries, zh: info.zh, size: info.size };
-  await kvSet('dictInfo', local);
-  onProgress(1);
-  return local;
-}
-
-export async function deleteDict(): Promise<void> {
-  if (dbPromise) {
-    try { (await dbPromise).closeSync(); } catch {}
-    dbPromise = null;
-  }
-  const f = new File(DIR, NAME);
-  if (f.exists) f.delete();
-  await kvSet('dictInfo', null);
 }
 
 const commonPrefix = (a: string, b: string) => {
@@ -117,7 +110,7 @@ export async function lookup(base: string, reading?: string | null): Promise<Dic
 }
 
 /** 合并手机上 AI 翻译过的中文义项。 */
-async function withLocalZh(e: DictEntry): Promise<DictEntry> {
+export async function withLocalZh(e: DictEntry): Promise<DictEntry> {
   if (e.senses.every((s) => s.zh)) return e;
   const zh = await kvGet<string[] | null>(`zh:${e.id}`, null);
   return zh && zh.length === e.senses.length ? { ...e, senses: e.senses.map((s, i) => ({ ...s, zh: s.zh || zh[i] })) } : e;

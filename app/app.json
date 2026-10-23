@@ -2,7 +2,7 @@
   "expo": {
     "name": "にゃほんご",
     "slug": "kotoba-seichou",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "orientation": "default",
     "scheme": "nyahongo",
     "icon": "./assets/icon.png",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.nihongostudy.seichou",
-      "versionCode": 4,
+      "versionCode": 5,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#C8553D",
@@ -21,7 +21,9 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "plugins": [
       "./plugins/withProcessText",
@@ -55,7 +57,8 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }

@@ -18,6 +18,17 @@ class LlmError(Exception):
     """可以直接展示给用户的错误，不会包含 API Key。"""
 
 
+def _read_all(resp, deadline: float) -> bytes:
+    """按总时长限制读完响应。urlopen 的 timeout 只管「多久没收到数据」，服务商排队时会一直发
+    保活的空白，请求就永远不超时（DeepInfra 批量翻译时遇到过：几个请求挂了十几分钟）。"""
+    chunks = []
+    while chunk := resp.read1(65536):
+        chunks.append(chunk)
+        if time.monotonic() > deadline:
+            raise TimeoutError("超过时限还没返回完（服务商在排队）")
+    return b"".join(chunks)
+
+
 def _request(cfg: LlmConfig, path: str, body: dict | None = None, timeout: float = 90) -> dict:
     key = cfg.key()
     if not key:
@@ -30,7 +41,7 @@ def _request(cfg: LlmConfig, path: str, body: dict | None = None, timeout: float
         req = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                return json.loads(_read_all(resp, time.monotonic() + timeout).decode("utf-8"))
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")[:300]
             if e.code in RETRY_STATUS and attempt < 2:

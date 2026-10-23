@@ -238,35 +238,6 @@ function renderLibrary() {
   cleanup = () => { clearInterval(timer); };
 }
 
-// ---------- 手机离线词典 ----------
-let dictTranslating = false;
-
-async function loadDictCard() {
-  const box = $("#dict-card");
-  if (!box) return;
-  let d;
-  try { d = await api("/api/dictionary"); } catch { return; }
-  const t = d.translating || {};
-  dictTranslating = !!t.running;
-  const mb = (d.size / 1048576).toFixed(0);
-  const pct = Math.round((t.progress || 0) * 100);
-  box.innerHTML = `
-    <div class="dict-card">
-      <div class="dict-main">
-        <div class="dict-title">手机离线词典</div>
-        <div class="dict-meta">JMdict ${(d.entries / 10000).toFixed(1)} 万词条 · 中文释义 ${d.zh.toLocaleString()} 条 · ${mb} MB · 手机在「设置」里下载</div>
-        ${t.running ? `<div class="progress"><div style="width:${pct}%"></div></div>` : ""}
-        ${t.message && !t.running ? `<div class="dict-meta">${esc(t.message)}</div>` : ""}
-      </div>
-      <button class="btn small" id="dict-translate" ${t.running ? "disabled" : ""}>${t.running ? `翻译中 ${pct}%` : "预翻译常用词"}</button>
-    </div>`;
-  $("#dict-translate")?.addEventListener("click", async () => {
-    if (!confirm("让 AI 把约 2.2 万个常用词条的英文释义翻译成中文。\n\n会花费一些 API 额度，用时约十几分钟，翻过的不会重复翻。要开始吗？")) return;
-    try { await api("/api/dictionary/translate-common", { method: "POST" }); dictTranslating = true; loadDictCard(); }
-    catch (err) { toast(err.message); }
-  });
-}
-
 async function loadLibrary() {
   const box = $("#library");
   if (!box) return;
@@ -1003,14 +974,9 @@ function renderPhone() {
       <p class="set-hint">连不上的话：第一次打开 PC 端时 Windows 会问是否允许网络访问，要选「允许」。点错了在「Windows 安全中心 → 防火墙 → 允许应用通过防火墙」里把 Python 勾上。</p>
     </section>
     <div class="section-title"><h2>多设备同步</h2></div>
-    <div class="set-card"><p class="set-hint" style="margin:0">手机、平板都填同一个地址，生词本和复习进度、阅读和翻译记录、语法进度、精听学到哪一句、猫に小判会通过这台电脑自动合并。同步数据保存在 PC 端文件夹的 sync 里，会保留最近 30 个旧版本。</p></div>
-    <div class="section-title"><h2>手机离线词典</h2></div>
-    <div id="dict-card"></div>`;
+    <div class="set-card"><p class="set-hint" style="margin:0">手机、平板都填同一个地址，生词本和复习进度、阅读和翻译记录、语法进度、精听学到哪一句、猫に小判会通过这台电脑自动合并。同步数据保存在 PC 端文件夹的 sync 里，会保留最近 30 个旧版本。</p></div>`;
   $("#copy-url").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($("#phone-url").textContent); toast("已复制"); } catch { toast("复制失败，手动选中复制吧"); }
   });
   if (!url) api("/api/lan").then((lan) => { lanInfo = lan; $("#phone-url").textContent = lan.urls[0]?.replace("http://", "") ?? "没有找到局域网地址"; }).catch(() => {});
-  loadDictCard();
-  const dictTimer = setInterval(() => { if (dictTranslating) loadDictCard(); }, 3000);
-  cleanup = () => clearInterval(dictTimer);
 }

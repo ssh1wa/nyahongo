@@ -42,3 +42,6 @@ yarn-error.*
 
 # APK build log
 build.log
+
+# 预装的离线词典（pc/tools/export_phone_dict.py 生成，约 76 MB）
+/assets/dict/*.sqlite

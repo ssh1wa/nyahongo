@@ -8,8 +8,8 @@ import { getPcUrl } from './packages';
 import { listRoutines } from './routines';
 import { emptyDoc, mergeDocs, type RoutineSync, type SyncDoc, type WordSync } from './syncMerge';
 
-// 跟着同步的 kv：语法课程安排、语法中文简述、词条中文释义和 AI 释义缓存（省得每台设备都花钱再生成一遍）、搜索记录
-const SYNCED_KV = /^(course:|grammarZh:|zh:|ai-gloss:|searchRecent$)/;
+// 跟着同步的 kv：语法课程安排、语法中文简述、词条中文释义、AI 释义和 AI 详解的缓存（省得每台设备都花钱再生成一遍）、搜索记录
+const SYNCED_KV = /^(course:|grammarZh:|zh:|ai-gloss:|word-detail:|searchRecent$)/;
 
 export type SyncStatus = { at: number; ok: boolean; message: string; changes: number };
 

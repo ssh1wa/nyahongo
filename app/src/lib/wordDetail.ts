@@ -1,10 +1,16 @@
-// 生词的详细释义：第一次点开时让 AI 写，存进生词本。词条本身仍以词典为准，AI 只负责讲解用法、举例。
+// 生词的详细释义（AI 详解）：第一次点开时让 AI 写，存进生词本；查词面板里也能生成。词条本身仍以词典为准，AI 只负责讲解用法、举例。
+// 按词典词条缓存在 kv 的 word-detail:<词条 id>（跟着同步），同一个词在查词、生词本、别的设备上都不用重复花钱。
+import { kvGet, kvSet } from './db';
 import { arr, requestJson, str } from './llm';
 import { RUBY_RULES, segs } from './prompts';
 import { loadLlmSettings } from './settings';
+import type { DictEntry } from './types';
 import { saveDetail, type WordDetail, type WordRow } from './wordbook';
 
-const isEnglish = (w: WordRow) => !!w.entry?.phonetic || /^[A-Za-z][A-Za-z'\- ]*$/.test(w.headword);
+type DetailInput = { headword: string; reading?: string | null; entry?: DictEntry | null; context?: string | null; contextZh?: string | null };
+
+const isEnglish = (w: DetailInput) => !!w.entry?.phonetic || /^[A-Za-z][A-Za-z'\- ]*$/.test(w.headword);
+const cacheKey = (entry?: DictEntry | null) => (entry && entry.id > 0 ? `word-detail:${entry.id}` : null);
 
 const JA_PROMPT = `你是给中文母语学习者讲解日语单词的老师。根据给出的词典释义和学习者遇到它的原句，写一份详细、实用的讲解。
 - 释义以词典为准，不要编造词典里没有的意思；可以按常用程度重新组织，说明每个意思的语感和使用场合
@@ -38,8 +44,21 @@ function shape(raw: any): WordDetail {
 }
 
 /** 生成并缓存。已经有了就直接返回（force 时重新生成） */
+/** 生词本里的词：已有讲解直接用，没有就先找缓存、再让 AI 写，存进生词本 */
 export async function wordDetail(w: WordRow, force = false): Promise<WordDetail> {
   if (w.detail && !force) return w.detail;
+  const detail = await entryDetail({ headword: w.headword, reading: w.reading, entry: w.entry, context: w.context, contextZh: w.context_zh }, force);
+  await saveDetail(w.id, detail);
+  return detail;
+}
+
+/** 任意一个词（比如查词面板里查到的）：先找缓存，没有再让 AI 写 */
+export async function entryDetail(w: DetailInput, force = false): Promise<WordDetail> {
+  const key = cacheKey(w.entry);
+  if (key && !force) {
+    const cached = await kvGet<WordDetail | null>(key, null);
+    if (cached) return cached;
+  }
   const settings = await loadLlmSettings();
   const en = isEnglish(w);
   const detail = await requestJson(settings, [
@@ -50,12 +69,18 @@ export async function wordDetail(w: WordRow, force = false): Promise<WordDetail>
         word: w.headword,
         reading: w.reading,
         dictionary: w.entry?.senses.map((s) => ({ pos: s.pos, meaning: s.zh || s.en.join('; ') })) ?? null,
-        sentence: w.context,
-        sentenceTranslation: w.context_zh,
+        sentence: w.context ?? null,
+        sentenceTranslation: w.contextZh ?? null,
       }),
     },
   ], shape, { temperature: 0.3, maxTokens: 4000 });
   if (!detail.summary && !detail.meanings.length) throw new Error('没有生成出讲解，请重试');
-  await saveDetail(w.id, detail);
+  if (key) await kvSet(key, detail);
   return detail;
 }
+
+/** 已经生成过 AI 详解的话直接拿到（不花钱） */
+export const cachedDetail = (entry?: DictEntry | null) => {
+  const key = cacheKey(entry);
+  return key ? kvGet<WordDetail | null>(key, null) : Promise.resolve(null);
+};

@@ -1,4 +1,5 @@
-// 中日互译 + 词汇语法拆解 + 追问（迁移自「ことば日和」）
+// 中日互译 + 词汇语法拆解 + 追问（迁移自「ことば日和」）。输入单词时，下面直接列出离线词典的结果（输入即查，不花 AI 费用）：
+// 日语按写法查，中文按中文释义查日语；按上面选的翻译方向判断，自动识别的规则见 lib/dictSearch.ts 的 searchGroups
 import { Clock3, Send } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { award } from '../lib/game';
@@ -6,11 +7,12 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInpu
 import { FollowUpPanel } from '../components/FollowUpPanel';
 import { RubyText } from '../components/Ruby';
 import { LookupSheet, type LookupWord } from '../components/LookupSheet';
-import { Button, Card, ErrorNote, ScreenHeader, SectionLabel, Segmented } from '../components/Ui';
+import { Button, Card, ErrorNote, ScreenHeader, SectionLabel, Segmented, Tag } from '../components/Ui';
 import { useNav } from '../nav';
 import { requestJson } from '../lib/llm';
 import { followUpPrompt, shapeFollowUp, shapeTranslation, translationPrompt, type FollowUp, type TranslateDirection, type TranslationResult } from '../lib/prompts';
 import { kvGet, kvSet } from '../lib/db';
+import { looksLikeWord, searchGroups, shortMeaning, type SearchGroup, type SearchHit } from '../lib/dictSearch';
 import { addRecord, listRecords, updateRecord, type RecordRow } from '../lib/records';
 import { loadLlmSettings } from '../lib/settings';
 import { radius, useColors } from '../theme';
@@ -34,6 +36,18 @@ export function TranslateScreen() {
   const [dir, setDir] = useState<TranslateDirection>('auto');
   useEffect(() => { void kvGet<TranslateDirection>('translateDir', 'auto').then(setDir); }, []);
   const chooseDir = (d: TranslateDirection) => { setDir(d); void kvSet('translateDir', d); };
+
+  // 输入即查：停顿 0.15 秒再查，打字时不卡
+  const [found, setFound] = useState<SearchGroup[]>([]);
+  const [picked, setPicked] = useState<SearchHit | null>(null);
+  useEffect(() => {
+    const q = input.trim();
+    if (!looksLikeWord(q)) return;
+    let stale = false;
+    const timer = setTimeout(() => { void searchGroups(q, dir).then((g) => { if (!stale) setFound(g); }); }, 150);
+    return () => { stale = true; clearTimeout(timer); };
+  }, [input, dir]);
+  const groups = looksLikeWord(input) ? found : []; // 输入变成整句或清空时不显示
 
   const loadHistory = useCallback(() => listRecords<Saved>('translation', 20).then(setHistory), []);
   useEffect(() => { void loadHistory(); }, [loadHistory]);
@@ -107,7 +121,7 @@ export function TranslateScreen() {
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder={dir === 'zh-ja' ? '输入中文句子' : dir === 'ja-zh' ? '输入日文句子' : '输入中文或日文句子'}
+            placeholder={dir === 'zh-ja' ? '输入中文句子或词语' : dir === 'ja-zh' ? '输入日文句子或单词' : '输入中文或日文；单词会直接查词典'}
             placeholderTextColor={c.muted}
             multiline
             textAlignVertical="top"
@@ -115,6 +129,35 @@ export function TranslateScreen() {
           />
           <Button label="翻译并拆解" onPress={translate} loading={loading} disabled={!input.trim()} icon={<Send size={17} color={c.accentInk} />} />
         </Card>
+
+        {groups.map((g) => (
+          <View key={g.kind} style={{ gap: 6 }}>
+            <SectionLabel>{g.title}</SectionLabel>
+            <Card style={{ paddingVertical: 4, paddingHorizontal: 14 }}>
+              {g.hits.map((h, i) => {
+                const head = hitHead(h);
+                const reading = h.entry.readings[0] ?? '';
+                return (
+                  <Pressable
+                    key={h.entry.id}
+                    onPress={() => setPicked(h)}
+                    style={({ pressed }) => [styles.hit, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: c.line }, { opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                      <Text style={{ color: c.ink, fontSize: 17, fontWeight: '700' }}>{head}</Text>
+                      {reading && reading !== head ? <Text style={{ color: c.ruby, fontSize: 13 }}>{reading}</Text> : null}
+                      {h.entry.common ? <Tag label="常用" tone="ok" /> : null}
+                    </View>
+                    {/* 中文查到的显示全部中文义项，看得出是哪个意思对上的 */}
+                    <Text numberOfLines={1} style={{ color: c.ink2, fontSize: 13.5 }}>
+                      {h.match === 'zh' ? h.entry.senses.map((s) => s.zh).filter(Boolean).join('；') : shortMeaning(h.entry)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </Card>
+          </View>
+        ))}
 
         {error ? <ErrorNote message={error} /> : null}
 
@@ -181,8 +224,8 @@ export function TranslateScreen() {
           </View>
         ) : (
           <View style={{ gap: 6 }}>
-            {history.length ? <SectionLabel>最近查询</SectionLabel> : null}
-            {history.map((h) => (
+            {history.length && !groups.length ? <SectionLabel>最近查询</SectionLabel> : null}
+            {(groups.length ? [] : history).map((h) => (
               <Pressable
                 key={h.id}
                 onPress={() => { setCurrent(h.data); setRecordId(h.id); setInput(h.data.query); }}
@@ -203,8 +246,24 @@ export function TranslateScreen() {
           onClose={() => setLookup(null)}
         />
       ) : null}
+      {picked ? (
+        <LookupSheet
+          key={picked.entry.id}
+          word={{ surface: hitHead(picked), base: hitHead(picked), reading: picked.entry.readings[0] }}
+          entry={picked.entry}
+          onClose={() => setPicked(null)}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   );
+}
+
+/** 列表里显示的写法：匹配到汉字写法就用它；用假名查到的、平时写汉字的词显示汉字 */
+function hitHead(h: SearchHit): string {
+  const { entry, form } = h;
+  if (entry.kanji.includes(form)) return form;
+  const usuallyKana = entry.senses[0]?.tags.includes('常写假名');
+  return !usuallyKana && entry.kanji[0] ? entry.kanji[0] : form;
 }
 
 const styles = StyleSheet.create({
@@ -214,4 +273,5 @@ const styles = StyleSheet.create({
   word: { flexDirection: 'row', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   example: { padding: 10, borderRadius: radius.sm, gap: 4 },
   history: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  hit: { paddingVertical: 10, gap: 3 },
 });

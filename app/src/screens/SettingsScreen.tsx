@@ -1,15 +1,15 @@
 // 设置：分栏 —— AI 接口（自动检测模型、连接测试、联网搜索）、用量、学习、外观、同步与词典、关于
 import Constants from 'expo-constants';
 import {
-  BarChart3, BookOpen, Bot, Check, ChevronLeft, CircleCheck, CircleX, Download, Eye, EyeOff, Info, Laptop, Moon, Palette, RefreshCw,
-  Search, Sparkles, Sun, SunMoon, Trash2,
+  BarChart3, BookOpen, Bot, Check, ChevronLeft, CircleCheck, CircleX, Eye, EyeOff, Info, Laptop, Moon, Palette, RefreshCw,
+  Search, Sparkles, Sun, SunMoon,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, ErrorNote, Segmented, SectionLabel } from '../components/Ui';
-import { deleteDict, downloadDict, localDictInfo, remoteDictInfo, type DictInfo } from '../lib/dict';
+import { ensureDict, localDictInfo, type DictInfo } from '../lib/dict';
 import { ATTRIBUTION as GRAMMAR_ATTRIBUTION } from '../lib/grammar';
 import { listModels, testModel, type ModelInfo } from '../lib/llm';
 import { getPcUrl, pingPc, setPcUrl } from '../lib/packages';
@@ -785,63 +785,30 @@ function DeviceSyncSection() {
 function DictSection() {
   const c = useColors();
   const [local, setLocal] = useState<DictInfo | null | undefined>(undefined);
-  const [remote, setRemote] = useState<(DictInfo & { exists: boolean }) | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState('');
-  const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    localDictInfo().then(setLocal);
-    getPcUrl().then((u) => (u ? remoteDictInfo(u).then(setRemote).catch(() => setRemote(null)) : null));
-    return () => abort.current?.abort();
+    // 第一次打开 App 时会在后台把预装的词典解压到手机里，这里等它完成
+    ensureDict().then(() => localDictInfo()).then(setLocal).catch((err) => { setLocal(null); setError(err instanceof Error ? err.message : String(err)); });
   }, []);
-
-  const download = async () => {
-    const pc = await getPcUrl();
-    if (!pc) { setError('先在上面填好 PC 端地址'); return; }
-    setError(''); setProgress(0);
-    abort.current = new AbortController();
-    try {
-      setLocal(await downloadDict(pc, setProgress, abort.current.signal));
-    } catch (e) {
-      if (!(e instanceof Error && e.name === 'AbortError')) setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setProgress(null);
-    }
-  };
-  const remove = () => Alert.alert('删除离线词典', '删除后查词会改用 AI 释义（会花一点费用），可以随时重新下载。', [
-    { text: '取消', style: 'cancel' },
-    { text: '删除', style: 'destructive', onPress: async () => { await deleteDict(); setLocal(null); } },
-  ]);
-  const mb = (n?: number) => (n ? `${Math.round(n / 1048576)} MB` : '');
-  const newer = remote?.exists && local && remote.version !== local.version;
 
   return (
     <>
       <SectionLabel>离线词典</SectionLabel>
       <Card style={{ gap: 12 }}>
         <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
-          JMdict 日语词典，约 21 万个词条。查词优先用它，释义准确，也不花 AI 费用。从电脑下载，约 {mb(remote?.size) || '70 MB'}。
+          JMdict 日语词典，约 21 万个词条，已经装在 App 里，不用联网。查词优先用它，释义准确，也不花 AI 费用。在「翻译」页输入单词就能直接查。
         </Text>
-        {local === undefined ? <ActivityIndicator color={c.accent} /> : local ? (
-          <StatusLine ok text={`已下载 · ${local.entries.toLocaleString()} 词条 · 中文释义 ${local.zh.toLocaleString()} 条${newer ? ' · 电脑上有更新' : ''}`} />
-        ) : <Text style={{ color: c.muted, fontSize: 13 }}>还没有下载</Text>}
-        {progress !== null ? (
-          <View style={{ gap: 6 }}>
-            <View style={[styles.bar, { backgroundColor: c.surface2 }]}><View style={{ width: `${Math.round(progress * 100)}%`, height: '100%', backgroundColor: c.accent }} /></View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ color: c.muted, fontSize: 12 }}>下载中 {Math.round(progress * 100)}%</Text>
-              <Pressable onPress={() => abort.current?.abort()}><Text style={{ color: c.accent, fontSize: 12 }}>取消</Text></Pressable>
-            </View>
+        {local === undefined ? (
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <ActivityIndicator color={c.accent} />
+            <Text style={{ color: c.muted, fontSize: 13 }}>正在准备词典（只有第一次）…</Text>
           </View>
-        ) : (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button label={local ? (newer ? '更新词典' : '重新下载') : '从电脑下载'} kind={local && !newer ? 'secondary' : 'primary'} onPress={download} icon={<Download size={17} color={local && !newer ? c.ink : c.accentInk} />} style={{ flex: 1 }} />
-            {local ? <Button label="删除" kind="danger" onPress={remove} icon={<Trash2 size={16} color={c.err} />} /> : null}
-          </View>
-        )}
-        {error ? <ErrorNote message={error} /> : null}
-        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>词典原本是英文释义。查到还没有中文的词条时，会让 AI 把它翻成中文并保存下来，下次就不用再翻。也可以在 PC 端点「预翻译常用词」，一次翻好约 2.2 万个常用词（会花一些 AI 费用）。</Text>
+        ) : local ? (
+          <StatusLine ok text={`可以使用 · ${local.entries.toLocaleString()} 词条 · 中文释义 ${local.zh.toLocaleString()} 条`} />
+        ) : null}
+        {error ? <ErrorNote message={`词典准备失败：${error}`} /> : null}
+        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>常用的约 2.2 万个词条已经预先翻译成中文。其余词条原本是英文释义，查到时会让 AI 翻成中文并保存下来，下次就不用再翻。</Text>
       </Card>
     </>
   );

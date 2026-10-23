@@ -14,7 +14,7 @@ const SUFFIXES = [
   'った', 'って', 'んだ', 'んで', 'いた', 'いて', 'いだ', 'いで', 'た', 'て', 'だ', 'で', 'ば', 'う', 'よう',
 ];
 
-function baseCandidates(s: string): string[] {
+export function baseCandidates(s: string): string[] {
   const out = [s];
   // 形容词：高かった / 高くない / 高く / 高くて / 高ければ → 高い
   for (const suf of ['かった', 'くない', 'くなかった', 'くて', 'ければ', 'く', 'さ']) {

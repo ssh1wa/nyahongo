@@ -7,6 +7,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { markActive, setForeground, tick } from './src/lib/game';
 import { autoSync, onSynced } from './src/lib/sync';
 import { autoCheckUpdate, plainNotes, skipUpdate } from './src/lib/updates';
+import { ensureDict } from './src/lib/dict';
 import { NavContext, type Nav, type TabId } from './src/nav';
 import { SpriteProvider } from './src/game/Sprites';
 import { SelectionProvider } from './src/components/Selection';
@@ -58,6 +59,9 @@ function Main() {
     const timer = setInterval(() => tick(15), 15000);
     return () => { sub.remove(); off(); clearInterval(timer); };
   }, []);
+
+  // 预装的离线词典第一次打开时解压到手机里（几秒钟），后台做，查词时就不用等
+  useEffect(() => { void ensureDict().catch(() => {}); }, []);
 
   // 检查更新：打开几秒后查一次（一天最多一次），有新版本弹窗问一下
   useEffect(() => {
