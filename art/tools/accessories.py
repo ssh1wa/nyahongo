@@ -1,4 +1,4 @@
-"""24 件饰品 × 4 种体型。
+"""32 件饰品 × 6 种体型。
 
 饰品不画成固定图片，而是按每种体型的锚点（头顶、头宽、眼睛、耳尖、脖子）贴图或生成，所以戴在哪种猫身上都对得上。
 描边和阴影自动加：伸出猫身的地方加深色描边，压在毛上的地方用饰品本身的深色做分界。
@@ -18,7 +18,7 @@ from typing import Callable
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).parent))
-from cats import N, OUTLINE, Body, bodies, cats, darken, ellipse, hexc, render, shape_of  # noqa: E402
+from cats import BODY_ORDER, N, OUTLINE, Body, bodies, cats, darken, ellipse, hexc, render, shape_of  # noqa: E402
 
 TOP = 8  # 饰品图层比猫多出的上方行数
 H = N + TOP
@@ -217,6 +217,37 @@ def accessories() -> list[Acc]:
         return out
     L.append(Acc("heddohon", "common", {"a": "#3FA796", "b": "#2D7A6D", "h": "#8FD9CB"}, heddohon))
 
+    # 狸猫变身用的那片叶子
+    L.append(Acc("happa", "common", {"a": "#6FA552", "h": "#9CCB78", "b": "#5B4630"}, lambda a: centered([
+        "....aa",
+        "..aaha",
+        ".aahaa",
+        "aahaa.",
+        ".aa...",
+        "b.....",
+    ], a.top + 1)))
+
+    def sangurasu(a):
+        out = {}
+        for x0, y0, x1, y1 in (a.eye_l, a.eye_r):
+            for x in range(x0 - 1, x1 + 2):
+                for y in range(y0 - 1, y1 + 2):
+                    edge = x in (x0 - 1, x1 + 1) or y in (y0 - 1, y1 + 1)
+                    out[(x, y)] = "b" if edge else ("h" if (x, y) == (x0, y0) else "a")
+        y = a.eye_l[1] - 1
+        for x in range(a.eye_l[2] + 2, a.eye_r[0] - 1):
+            out[(x, y)] = "b"
+        return out
+    L.append(Acc("sangurasu", "common", {"a": "#2A2A33", "b": "#1B1B22", "h": "#8A8AA0"}, sangurasu, outline=False))
+
+    L.append(Acc("kaeru", "common", {"a": "#7DBB5A", "h": "#A8D98A", "w": "#FFFFFF", "k": "#3A2E2A"}, lambda a: centered([
+        "..ww....ww..",
+        ".wkkw..wkkw.",
+        ".aaaaaaaaaa.",
+        "aahaaaaaahaa",
+        "aaaaaaaaaaaa",
+    ], a.top + 2)))
+
     # ---------- 稀有 ----------
     def kitsunemen(a):
         _, hi = a.span(a.top + 3)
@@ -279,6 +310,26 @@ def accessories() -> list[Acc]:
 
     L.append(Acc("chonmage", "rare", {"a": "#2B2624", "b": "#FFFDF8", "h": "#4A4340"}, lambda a: centered(["..ah..", ".aaaha", ".aaaa.", "..bb..", ".aaaa."], a.top + 1)))
 
+    def omamori(a):
+        out = body_band(a, a.neck, 1, lambda x, y: "c")
+        out.update(stamp([".bb.", "aaaa", "ahha", "aaaa", "aaaa"], 13, a.neck + 1))
+        return out
+    L.append(Acc("omamori", "rare", {"a": "#C8352B", "h": "#F2C94C", "b": "#F2C94C", "c": "#D8443A"}, omamori))
+
+    L.append(Acc("santa", "rare", {"a": "#D8443A", "b": "#FFFDF8", "c": "#FFFDF8"}, lambda a: centered([
+        "........aaa.cc",
+        "......aaaaaacc",
+        "....aaaaaaaa..",
+        "..aaaaaaaaaa..",
+        "bbbbbbbbbbbbbb",
+        "bbbbbbbbbbbbbb",
+    ], a.top + 3)))
+
+    def kanzashi(a):
+        x, y = a.ear_r
+        return stamp(["...bb", "..bab", "..cb.", ".c...", "c.h..", "..d..", "..h..", "..d.."], x - 3, y + 1)
+    L.append(Acc("kanzashi", "rare", {"a": "#F2C94C", "b": "#E3607A", "c": "#8A5A36", "d": "#F4A6BD", "h": "#FFFFFF"}, kanzashi))
+
     # ---------- 史诗 ----------
     L.append(Acc("oukan", "epic", {"a": "#F2C94C", "h": "#FFF2B0", "b": "#D8443A", "c": "#3F7DB8"}, lambda a: centered([
         "h....hh....h",
@@ -319,6 +370,18 @@ def accessories() -> list[Acc]:
         "aaaaaaaaaaaaaaaa",
     ], a.top + 2), sparkles=lambda a: [(25, a.top - 6, "#FFF2B0"), (5, a.top - 2, "#FFF2B0")]))
 
+    L.append(Acc("shiruku", "epic", {"a": "#2B2624", "h": "#4A4340", "b": "#C8352B"}, lambda a: centered([
+        "..aaaaaaaa..",
+        "..ahaaaaaa..",
+        "..ahaaaaaa..",
+        "..ahaaaaaa..",
+        "..ahaaaaaa..",
+        "..ahaaaaaa..",
+        "..bbbbbbbb..",
+        ".aaaaaaaaaa.",
+        "aaaaaaaaaaaa",
+    ], a.top + 2), sparkles=lambda a: [(5, a.top - 3, "#FFF2B0"), (25, a.top - 5, "#FFF2B0")]))
+
     # ---------- 传说 ----------
     def inari(a):
         out = {}
@@ -346,6 +409,18 @@ def accessories() -> list[Acc]:
         return out
     L.append(Acc("ryuunotsuno", "legendary", {"a": "#3FA796", "h": "#B8F0E0", "c": "#F4FAFF"}, ryuu,
                  sparkles=lambda a: [(6, a.top - 6, "#B8F0E0"), (23, a.top - 7, "#B8F0E0")]))
+
+    # 狐火：头的两边和上方飘着几团蓝色的火
+    def kitsunebi(a):
+        flame = ["..a..", ".aa..", ".aha.", "ahwha", "ahwha", ".aha."]
+        small = [".a.", "aa.", "awa", ".a."]
+        lo, hi = a.span(ey(a))
+        out = stamp(flame, max(0, lo - 6), ey(a) - 8)  # 别超出画布：宽脸的猫火会被切掉
+        out.update(stamp(flame, min(N - 5, hi + 2), ey(a) - 10, flip=True))
+        out.update(stamp(small, 21, a.top - 8))
+        return out
+    L.append(Acc("kitsunebi", "legendary", {"a": "#4FA8FF", "h": "#A8DCFF", "w": "#FFFFFF"}, kitsunebi, outline=False,
+                 sparkles=lambda a: [(4, a.top - 5, "#B8E2FF"), (10, a.top - 7, "#DFF4FF")]))
     return L
 
 
@@ -387,8 +462,8 @@ def main():
     bs = bodies()
     accs = accessories()
     all_cats = {c.id: c for c in cats()}
-    show = {"manmaru": "chatora", "mochi": "sabatora", "surari": "shamu", "fuwa": "kuriimu"}
-    order = ["manmaru", "mochi", "surari", "fuwa"]
+    show = {"manmaru": "chatora", "mochi": "sabatora", "surari": "shamu", "fuwa": "kuriimu", "chokon": "kinako", "oomimi": "kafeore"}
+    order = list(BODY_ORDER)
     layers: dict[tuple[str, str], Image.Image] = {}
     for body in order:
         a = anchors(bs[body])

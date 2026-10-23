@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TokenText } from '../components/Ruby';
 import { WordSheet } from '../components/WordSheet';
 import { kvGet, kvSet } from '../lib/db';
-import { award, setMediaPlaying } from '../lib/game';
+import { award, LISTEN_MIN_RATIO, listenPoints, setMediaPlaying } from '../lib/game';
 import { loadPackage, mediaUri, saveProgress } from '../lib/packages';
 import type { PackageData, Sentence } from '../lib/types';
 import { radius, useColors, useTheme } from '../theme';
@@ -94,6 +94,15 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const listRef = useRef<FlatList<Sentence>>(null);
   const userScrolledAt = useRef(0);
 
+  // 真正听过的秒数：播放时相邻两次 timeUpdate 的差，跳转（差太大或往回）不算；分几次听完也接着算
+  const heard = useRef({ sec: 0, last: -1, saved: 0 });
+  const heardKey = `player.heard.${meta.id}`;
+  useEffect(() => {
+    const h = heard.current;
+    void kvGet(heardKey, 0).then((v) => { h.sec += v; h.saved = h.sec; });
+    return () => { void kvSet(heardKey, h.sec); };
+  }, [heardKey]);
+
   const setCurrent = useCallback((i: number) => {
     if (i === st.current.idx) return;
     st.current.idx = i;
@@ -101,15 +110,25 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
     setZhRevealed(false);
     if (i >= 0) {
       void saveProgress(meta.id, i);
-      if (i === sentences.length - 1) award('listen', meta.id);
+      const total = meta.duration || sentences[sentences.length - 1]?.end || 0;
+      if (i === sentences.length - 1 && heard.current.sec >= total * LISTEN_MIN_RATIO) {
+        award('listen', meta.id, listenPoints(heard.current.sec));
+      }
       if (Date.now() - userScrolledAt.current > 3000) {
         listRef.current?.scrollToIndex({ index: i, viewPosition: 0.3, animated: true });
       }
     }
-  }, [meta.id, sentences.length]);
+  }, [meta.id, meta.duration, sentences]);
 
   useEffect(() => {
     const sub = player.addListener('timeUpdate', ({ currentTime: t }) => {
+      const h = heard.current;
+      const d = t - h.last;
+      if (player.playing && h.last >= 0 && d > 0 && d < 1) {
+        h.sec += d;
+        if (h.sec - h.saved > 30) { h.saved = h.sec; void kvSet(heardKey, h.sec); }
+      }
+      h.last = t;
       const s = st.current;
       const cur = sentences[s.idx];
       if (s.loop && cur && t >= cur.end + 0.12) {
@@ -130,7 +149,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
       }
     });
     return () => sub.remove();
-  }, [player, sentences, setCurrent]);
+  }, [player, sentences, setCurrent, heardKey]);
 
   // 从上次学到的句子继续
   useEffect(() => {

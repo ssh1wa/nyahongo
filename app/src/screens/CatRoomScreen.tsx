@@ -12,7 +12,7 @@ import { Storeroom, type StoreTarget } from '../game/Storeroom';
 import { CatPortrait, ChestAnimation, ItemIcon, SceneThumb } from '../game/Sprites';
 import { ITEMS, ITEM_BY_ID, KIND_LABEL, parseRubyLine, RARITY, RARITY_ORDER, type Item, type ItemKind, type Rarity } from '../lib/catalog';
 import {
-  ACTIONS, CHEST_SECONDS, BUY_COST, buyChest, canOpen, dayTotals, draw, OPEN_COST, exchange, MINUTE_POINTS, moveFurniture, PITY_EPIC, PITY_RARE, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
+  ACTIONS, CHEST_SECONDS, BUY_COST, buyChest, canOpen, dayTotals, draw, IDLE_MS, OPEN_COST, exchange, moveFurniture, PITY_EPIC, PITY_RARE, ROOM_MAX_CATS, ROOM_MAX_FURNITURE, setCatHat, setMainCat,
   localDate, setScene, SOFT_CAP, toggleFurniture, toggleRoomCat, type Action, type DrawResult, type GameState,
 } from '../lib/game';
 import { CONTENT_MAX, radius, useColors } from '../theme';
@@ -69,10 +69,10 @@ export function CatRoomScreen({ onBack }: { onBack: () => void }) {
       if (canOpen(game)) void open();
       else Alert.alert('小判不够', `开一个宝箱要 ${OPEN_COST} 小判，还差 ${short(OPEN_COST)}，去学一会儿吧。`);
     } else if (t === 'floor') {
-      if (game.coins < BUY_COST) Alert.alert('小判不够', `添一个宝箱要 ${BUY_COST} 小判，还差 ${short(BUY_COST)}。学满 30 分钟也会掉一个宝箱。`);
+      if (game.coins < BUY_COST) Alert.alert('小判不够', `添一个宝箱要 ${BUY_COST} 小判，还差 ${short(BUY_COST)}。学满 ${CHEST_SECONDS / 60} 分钟也会掉一个宝箱。`);
       else Alert.alert('添一个宝箱？', `花 ${BUY_COST} 小判，在仓库里放一个宝箱。`, [{ text: '取消', style: 'cancel' }, { text: '添一个', onPress: () => void buy() }]);
     } else if (t === 'koban') {
-      Alert.alert(`小判 ${coins(game.coins)}`, `学习赚来的：有效学习每分钟 ${MINUTE_POINTS} 个，复习、翻译、读完文章等也会给。开一个宝箱花 ${OPEN_COST} 个，也可以花 ${BUY_COST} 个添一个宝箱。`);
+      Alert.alert(`小判 ${coins(game.coins)}`, `学习赚来的：复习、翻译、读完文章、听完学习包、学完语法课都会给（学习时间本身只掉宝箱）。开一个宝箱花 ${OPEN_COST} 个，也可以花 ${BUY_COST} 个添一个宝箱。`);
     } else {
       Alert.alert(`毛玉 ${game.shards}`, '开到已经有的东西会变成毛玉。攒够了，在下面的图鉴里点开还没收集到的，就能用毛玉换。');
     }
@@ -504,11 +504,11 @@ function Rules() {
     <>
       <Card style={{ gap: 8 }}>
         {h('小判怎么来')}
-        {p(`有效学习每分钟 ${MINUTE_POINTS} 个：App 开着、1 分钟内有操作就算（精听播放时不用点屏幕）。下面这些学习行为另外加：`)}
+        {p('小判只来自下面这些学习行为（学习时间用来掉宝箱，见下面「宝箱」）：')}
         {(Object.keys(ACTIONS) as Action[]).map((k) => (
           <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: c.ink2, fontSize: 13 }}>{ACTIONS[k].label}</Text>
-            <Text style={{ color: c.muted, fontSize: 13 }}>+{ACTIONS[k].points}（每天最多 {ACTIONS[k].dailyCap} 次）</Text>
+            <Text style={{ color: c.muted, fontSize: 13 }}>+{ACTIONS[k].range ? ACTIONS[k].range!.join('~') : ACTIONS[k].points}（每天最多 {ACTIONS[k].dailyCap} 次）</Text>
           </View>
         ))}
         <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>
@@ -519,7 +519,7 @@ function Rules() {
 
       <Card style={{ gap: 8 }}>
         {h('宝箱')}
-        {p(`· 每学满 30 分钟，仓库里多一个宝箱\n· 也可以花 ${BUY_COST} 小判添一个（点仓库的空地板）\n· 开一个宝箱花 ${OPEN_COST} 小判（点仓库里的宝箱）`)}
+        {p(`· 有效学习每满 ${CHEST_SECONDS / 60} 分钟，仓库里多一个宝箱（App 开着、${IDLE_MS / 60000} 分钟内有操作就算，精听播放时不用点屏幕）\n· 也可以花 ${BUY_COST} 小判添一个（点仓库的空地板）\n· 开一个宝箱花 ${OPEN_COST} 小判（点仓库里的宝箱）`)}
         {p('所有宝箱都一样，开到什么是打开那一刻抽的。猫、饰品、场景、家具都在同一个池子里。')}
       </Card>
 

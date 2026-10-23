@@ -186,6 +186,45 @@ def merge(glossary: dict | None, manual: list[dict]) -> dict | None:
             "terms": manual + [t for t in glossary["terms"] if t["text"] not in texts]}
 
 
+# ---------------------------------------------------------------- 从标题认出作品名
+
+GUESS_PROMPT = """下面是一个视频或音频的标题（可能是下载下来的标题，也可能是本地文件名）。判断它是哪部动画、日剧、电影、综艺或别的作品，
+返回作品名：用最常见的叫法（中文或日文都行），去掉集数、季数、清晰度、字幕组、网站名这些。
+如果看不出是哪部作品（比如新闻、讲座、Vlog、播客单集、教程），返回空字符串，不要猜。
+只返回 JSON：{"work":"作品名或空字符串"}"""
+
+_NOISE = re.compile(
+    r"(第\s*[0-9０-９一二三四五六七八九十百]+\s*[話话集回季期巻卷部]|[#＃]\s*\d+|\bS\d+E\d+\b|\bEP?\s*\d+\b|\b\d{3,4}p\b"
+    r"|在线观看|在線觀看|高清|中字|中文字幕|简中|繁中|全集|完整版|无修|BD|WEB-?DL|\bHD\b)", re.I)
+
+
+def clean_title(title: str) -> str:
+    """没有 AI 时粗略整理：去掉方括号里的字幕组、集数、清晰度，网站名之类的尾巴"""
+    t = re.sub(r"\.(mp4|mkv|avi|mov|webm|m4a|mp3|flac|wav)$", "", title.strip(), flags=re.I)
+    t = re.sub(r"^[\[【［(（][^\]】］)）]{0,30}[\]】］)）]\s*", "", t)  # 开头的字幕组
+    t = re.split(r"\s*[-–—_|｜／/]\s*", t)[0] or t
+    t = _NOISE.split(t)[0] if _NOISE.search(t) else t
+    return re.sub(r"[\s　・:：]+$", "", t).strip()
+
+
+def guess_work(cfg: Config, title: str) -> str | None:
+    """从视频标题或文件名认出作品名；认不出返回 None"""
+    if not title.strip():
+        return None
+    if cfg.llm.key() and cfg.llm.model:
+        try:
+            result = chat_json(cfg.llm, [
+                {"role": "system", "content": GUESS_PROMPT},
+                {"role": "user", "content": title.strip()[:200]},
+            ], temperature=0.0, max_tokens=100, timeout=60)
+            work = str(result.get("work") or "").strip() if isinstance(result, dict) else ""
+            return work[:80] or None
+        except LlmError:
+            pass  # AI 出错就用规则整理
+    work = clean_title(title)
+    return work if len(work) >= 2 else None
+
+
 def summary(glossary: dict) -> str:
     sample = "、".join(t["text"] for t in glossary["terms"][:6])
     more = "…" if len(glossary["terms"]) > 6 else ""

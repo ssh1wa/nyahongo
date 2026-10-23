@@ -1,7 +1,7 @@
-// 阅读：常读（每天一篇）+ 新建读物（导入 / AI 写 / 搜索）+ 历史 + 精读器
+// 阅读：常读（每天一篇）+ 新建读物（导入 / AI 写 / 发现）+ 历史 + 精读器
 import * as ImagePicker from 'expo-image-picker';
 import {
-  BookOpenText, Camera, Check, ChevronLeft, ClipboardPaste, Globe, ImagePlus, Link, MoreHorizontal, Repeat, Search, Sparkles, Trash2, X,
+  BookOpenText, Camera, Check, ChevronLeft, ClipboardPaste, Compass, Globe, ImagePlus, Link, MoreHorizontal, RefreshCw, Repeat, Sparkles, Trash2, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -16,22 +16,23 @@ import {
   splitArticle, SOURCE_LABEL, type Article, type ArticleLength, type ArticleSource, type ResearchStage,
 } from '../lib/reading';
 import { addRoutine, deleteRoutine, listRoutines, localDate, todaysArticle, writeToday, type Routine } from '../lib/routines';
-import { deepseekSearch, searchMode, wikipediaSearch, wikipediaText, type SearchHit, type SearchMode } from '../lib/search';
+import { discover, DISCOVER_CATEGORIES, loadDiscover, type DiscoverItem, type DiscoverText } from '../lib/discover';
+import { searchMode, type SearchMode } from '../lib/search';
 import type { RecordRow } from '../lib/records';
 import { loadLlmSettings, visionReady } from '../lib/settings';
 import { useNav } from '../nav';
 import { radius, useColors } from '../theme';
 
-type Mode = 'import' | 'ai' | 'search';
+type Mode = 'import' | 'ai' | 'discover';
 type View_ = { kind: 'home' } | { kind: 'create'; mode: Mode } | { kind: 'reader'; id: number; article: Article };
 
 const ENTRIES: Array<{ mode: Mode; title: string; text: string; Icon: typeof Camera }> = [
   { mode: 'import', title: '导入', text: '粘贴 · 图片 · 网址', Icon: ClipboardPaste },
   { mode: 'ai', title: 'AI 写', text: '按要求和水平写', Icon: Sparkles },
-  { mode: 'search', title: '搜索', text: '全网 · 维基百科', Icon: Globe },
+  { mode: 'discover', title: '发现', text: '不知道读什么', Icon: Compass },
 ];
 
-const TITLES: Record<Mode, string> = { import: '导入文章', ai: 'AI 写读物', search: '搜索读物' };
+const TITLES: Record<Mode, string> = { import: '导入文章', ai: 'AI 写读物', discover: '发现读物' };
 
 const STAGE_LABEL: Record<ResearchStage, string> = { keywords: '整理搜索关键词', searching: '联网查资料', writing: 'AI 写作中' };
 
@@ -220,7 +221,7 @@ function Create({ mode, onBack, onStart, onRoutineSaved }: { mode: Mode; onBack:
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: 4 }]} keyboardShouldPersistTaps="handled">
         {mode === 'import' ? <ImportForm onStart={onStart} /> : null}
         {mode === 'ai' ? <AiForm onStart={onStart} onRoutineSaved={onRoutineSaved} /> : null}
-        {mode === 'search' ? <SearchForm onStart={onStart} /> : null}
+        {mode === 'discover' ? <DiscoverForm onStart={onStart} /> : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -527,90 +528,75 @@ function AiForm({ onStart, onRoutineSaved }: { onStart: (a: Article) => void; on
   );
 }
 
-function SearchForm({ onStart }: { onStart: (a: Article) => void }) {
+/** 发现：不知道读什么时，按分类直接给几篇能读的读物；点分类、点「换一批」都会重新取 */
+function DiscoverForm({ onStart }: { onStart: (a: Article) => void }) {
   const c = useColors();
-  const nav = useNav();
-  const [mode, setMode] = useState<SearchMode>('wikipedia');
-  const [tab, setTab] = useState<'web' | 'wiki'>('web');
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchHit[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [cat, setCat] = useState(DISCOVER_CATEGORIES[0].id);
+  const [items, setItems] = useState<DiscoverItem[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [opening, setOpening] = useState('');
   const [error, setError] = useState('');
-  const [page, setPage] = useState<{ title: string; text: string; url: string; source: ArticleSource } | null>(null);
-  useEffect(() => { searchMode().then(setMode); }, []);
+  const [page, setPage] = useState<DiscoverText | null>(null);
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true); setError('');
-    try { await fn(); } catch (e) { setError(friendlyError(e)); } finally { setBusy(false); }
+  const load = useCallback(async (id: string) => {
+    setLoading(true); setError(''); setItems(null);
+    try { setItems(await discover(id)); } catch (e) { setError(friendlyError(e)); } finally { setLoading(false); }
+  }, []);
+  // 第一次打开时取一批（放到下一个微任务里，effect 里不同步改状态）
+  useEffect(() => { void Promise.resolve().then(() => load(DISCOVER_CATEGORIES[0].id)); }, [load]);
+  const choose = (id: string) => { setCat(id); void load(id); };
+
+  const open = async (item: DiscoverItem) => {
+    setOpening(item.key); setError('');
+    try { setPage(await loadDiscover(item)); } catch (e) { setError(friendlyError(e)); } finally { setOpening(''); }
   };
-  const search = () => run(async () => {
-    setResults(tab === 'web' ? await deepseekSearch(query, { count: 12 }) : await wikipediaSearch(query));
-  });
-  const open = (hit: SearchHit) => run(async () => {
-    if (tab === 'wiki') {
-      setPage({ title: hit.title, text: await wikipediaText(hit.title), url: hit.url, source: 'wiki' });
-    } else {
-      const p = await fetchPage(hit.url);
-      setPage({ title: p.title || hit.title, text: p.text.slice(0, 4000), url: hit.url, source: 'url' });
-    }
-  });
 
   if (page) {
     return (
       <TextReview
         text={page.text}
-        setText={(t) => setPage({ ...page, text: t })}
+        setText={(text) => setPage({ ...page, text })}
         title={page.title}
-        setTitle={(t) => setPage({ ...page, title: t })}
+        setTitle={(title) => setPage({ ...page, title })}
         source={page.source}
         sourceUrl={page.url}
         onStart={onStart}
       />
     );
   }
+  const info = DISCOVER_CATEGORIES.find((x) => x.id === cat);
   return (
     <View style={{ gap: 12 }}>
-      <Segmented
-        options={[{ value: 'web', label: '全网搜索' }, { value: 'wiki', label: '维基百科' }]}
-        value={tab}
-        onChange={(t) => { setTab(t); setError(''); setResults(null); }}
-      />
-      {tab === 'web' && mode !== 'deepseek' ? (
-        <Card style={{ gap: 10 }}>
-          <Text style={{ color: c.ink2, lineHeight: 20 }}>搜全网要先在设置里打开「联网搜索」（填一个 DeepSeek 的 API Key，费用很低）。不打开的话，可以在旁边搜维基百科。</Text>
-          <Button label="去设置" kind="secondary" small onPress={nav.openSettings} />
-        </Card>
-      ) : (
-        <>
-          <View style={styles.searchRow}>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={search}
-              placeholder={tab === 'web' ? '搜索任何主题，中文日文都行' : '搜索主题，例如 富士山、ラーメン'}
-              placeholderTextColor={c.muted}
-              returnKeyType="search"
-              style={[styles.searchInput, { color: c.ink, borderColor: c.line, backgroundColor: c.surface }]}
-            />
-            <Button label="搜索" small onPress={search} disabled={!query.trim()} loading={busy && !results} icon={<Search size={16} color={c.accentInk} />} />
-          </View>
-          <Text style={{ color: c.muted, fontSize: 12 }}>
-            {tab === 'web' ? '想读日文文章，搜索词里加上「日本語」或直接用日文搜。读起来吃力可以在下一步点「改写成我的水平」。' : '维基百科偏书面语，读起来吃力可以在下一步点「改写成我的水平」。'}
-          </Text>
-          {results?.map((r) => (
-            <Pressable key={r.url} onPress={() => open(r)}>
-              <Card style={{ gap: 4, padding: 12 }}>
-                <Text numberOfLines={2} style={{ color: c.ink, fontWeight: '700', fontSize: 15 }}>{r.title}</Text>
-                <Text numberOfLines={1} style={{ color: c.accent, fontSize: 11.5 }}>{r.site || r.url.replace(/^https?:\/\//, '').split('/')[0]}{r.date ? ` · ${r.date.slice(0, 10)}` : ''}</Text>
-                {r.snippet ? <Text numberOfLines={2} style={{ color: c.muted, fontSize: 12.5 }}>{r.snippet}</Text> : null}
-              </Card>
+      <View style={styles.chips}>
+        {DISCOVER_CATEGORIES.map((x) => {
+          const on = x.id === cat;
+          return (
+            <Pressable key={x.id} onPress={() => { if (!on) choose(x.id); }} style={[styles.chip, { backgroundColor: on ? c.accent : c.surface2 }]}>
+              <Text style={{ color: on ? c.accentInk : c.ink2, fontSize: 13.5, fontWeight: on ? '700' : '500' }}>{x.label}</Text>
             </Pressable>
-          ))}
-          {results && !results.length ? <Text style={{ color: c.muted }}>没有找到</Text> : null}
-        </>
-      )}
-      {busy && results ? <ActivityIndicator color={c.accent} /> : null}
+          );
+        })}
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ flex: 1, color: c.muted, fontSize: 12.5, lineHeight: 18 }}>{info?.note}</Text>
+        <Button label="换一批" kind="ghost" small onPress={() => void load(cat)} loading={loading} icon={<RefreshCw size={14} color={c.ink2} />} />
+      </View>
+      {loading && !items ? <ActivityIndicator color={c.accent} style={{ marginVertical: 20 }} /> : null}
+      {items?.map((it) => (
+        <Pressable key={it.key} onPress={() => void open(it)} disabled={!!opening}>
+          <Card style={{ gap: 4, padding: 12, opacity: opening && opening !== it.key ? 0.5 : 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text numberOfLines={2} style={{ flex: 1, color: c.ink, fontWeight: '700', fontSize: 15 }}>{it.title}</Text>
+              {opening === it.key ? <ActivityIndicator size="small" color={c.accent} /> : null}
+            </View>
+            <Text numberOfLines={1} style={{ color: c.accent, fontSize: 11.5 }}>{it.sub}</Text>
+            {it.snippet ? <Text numberOfLines={2} style={{ color: c.muted, fontSize: 12.5, lineHeight: 18 }}>{it.snippet}</Text> : null}
+          </Card>
+        </Pressable>
+      ))}
+      {items && !items.length ? <Text style={{ color: c.muted }}>这个分类暂时没有读物，换一个试试</Text> : null}
       {error ? <ErrorNote message={error} /> : null}
+      <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>点开一篇会先显示全文，可以删掉不想读的部分；读起来吃力就点「改写成我的水平」。</Text>
     </View>
   );
 }

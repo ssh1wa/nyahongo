@@ -47,6 +47,7 @@ class Options:
     title: str | None = None  # 本地文件可以指定标题
     lang: str = "ja"  # ja / en（英语模式，测试版：双语字幕 + 点词查词，不逐词拆解）
     work: str | None = None  # 作品名：先准备角色名等专有名词，校对和注音更准
+    auto_work: bool = False  # 没填作品名时，从视频标题 / 文件名认出作品名（手动填的优先）
     terms: str | None = None  # 手动补充的专有名词，空格隔开，括号里可以写读音：唯（ゆい） 桜が丘
 
 
@@ -148,12 +149,17 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
     pkg_dir.mkdir(parents=True, exist_ok=True)
 
     names = None
+    work = (opts.work or "").strip()
     if not en:
-        if opts.work and opts.work.strip():
+        if not work and opts.auto_work:
+            progress(1, None, "从标题认作品名")
+            work = glossary_mod.guess_work(cfg, title) or ""
+            notice(f"从标题认出作品「{work}」，用它准备专有名词" if work else "没从标题认出是哪部作品，按普通方式处理")
+        if work:
             progress(1, None, "准备专有名词")
-            names = glossary_mod.build(cfg, opts.work, notice)
+            names = glossary_mod.build(cfg, work, notice)
             if not names and not opts.terms:
-                notice(f"没找到「{opts.work.strip()}」的角色名等资料，按普通方式处理")
+                notice(f"没找到「{work}」的角色名等资料，按普通方式处理")
         names = glossary_mod.merge(names, glossary_mod.parse_manual(opts.terms or ""))
         if names:
             notice(glossary_mod.summary(names))
@@ -224,7 +230,7 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
     write_package(pkg_dir, media=packed, title=title, source_url=url,
                   subtitles=subtitles, whisper_model=model,
                   dictionary=dictionary, refined_by=refined_by, lang=opts.lang,
-                  work=(opts.work or "").strip() or None, terms=(opts.terms or "").strip() or None)
+                  work=work or None, terms=(opts.terms or "").strip() or None)
     progress(4, 1, "完成")
 
     size = sum(f.stat().st_size for f in pkg_dir.iterdir()) / 1024 / 1024

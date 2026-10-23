@@ -1,86 +1,119 @@
-<div align="center">
+<p align="center"><img src="docs/banner.png" alt="にゃほんご：和猫猫一起，看剧读书学日语"></p>
 
-<img src="app/assets/icon.png" width="96" alt="にゃほんご">
+<p align="center">
+<b>带注音的 AI 日语学习 App · 动漫日剧逐句精听 · 42 只陪你学习的像素猫</b><br>
+安卓 App + PC 端（Windows 版） · 免费 · 非商用开源<br><br>
+<a href="../../releases"><b>⬇ 下载 App 和 PC 端</b></a> &nbsp;·&nbsp; <a href="#快速开始">快速开始</a> &nbsp;·&nbsp; <a href="#pc-端windows-版">PC 端</a>
+</p>
 
-# にゃほんご
+---
 
-**带注音的 AI 日语学习 App · 动漫日剧逐句精听 · 一只陪你学习的猫**
+## 🎬 看动漫日剧，一句一句地听
 
-安卓 App + PC 端（Windows 版） · 免费 · 非商用开源
-
-[下载 App 和 PC 端](../../releases) · [快速开始](#快速开始) · [PC 端](#pc-端windows-版)
-
-</div>
-
-## 为什么选择にゃほんご
-
-<table>
-<tr>
-<td width="62%">
-
-### 🐱 学习有猫陪，越学越想学
-
-学习的时候攒「小判」（日本古代的金币），每学满 30 分钟掉一个宝箱。开箱收集 **24 只猫、24 件饰品、8 个场景、8 件家具**，全部是手绘像素风，每件都带日语名字和例句。
-
-把猫和家具摆进自己的和风小屋，猫会在里面走来走去，点一下会用日语跟你说话。复习、翻译、读完一篇文章都有小判拿，不知不觉就学了一个小时。
-
-不想要的话，设置里一键切换成「纯净」模式。
-
-</td>
-<td width="38%" align="center"><img src="docs/screenshots/catroom.webp" width="240" alt="猫屋"></td>
-</tr>
-<tr>
-<td width="62%">
-
-### 🎬 看动漫日剧学日语，免费逐句精听
+<img align="right" width="270" src="docs/screenshots/listen_crop.webp" alt="逐句精听">
 
 想跟着动漫、日剧、播客逐句精听，Miraa 这类工具的 AI 转写一般要付费解锁。にゃほんご 的 PC 端在**你自己的电脑上**做语音识别（Whisper），不按分钟收费，想转多少转多少。
 
-粘贴 B 站、YouTube、niconico、播客链接，或者直接拖入电脑里的视频，几分钟后就是一份逐句字幕：AI 校对过、每句带中文翻译、每个汉字都有注音、每个词都能查词典。手机连上电脑下载，地铁上也能一句一句听。
+粘贴 B 站、YouTube、niconico、播客链接，或者直接拖入电脑里的视频，几分钟后就是一份逐句字幕：
 
-</td>
-<td width="38%" align="center"><img src="docs/screenshots/listen.webp" width="240" alt="逐句精听"></td>
-</tr>
-<tr>
-<td width="62%">
+- AI 校对过，每句带中文翻译
+- 每个汉字都有注音，每个词点一下就能查
+- 单句循环、读完一句自动暂停、调速、横屏分栏
 
-### ✍️ 一个 App 搞定各种学习，处处都有注音
+手机连上电脑下载，地铁上也能一句一句听。听完一集按**真正听了多久**给小判，直接拖到结尾不算。
+
+<br clear="right">
+
+<p align="center"><img width="760" src="docs/screenshots/pc_import_card.webp" alt="PC 端导入：作品名、专有名词、自动识别作品名"></p>
+
+> **人名不再听错**：填上作品名（或打开「自动识别作品名」，从视频标题里自己认），PC 端会先去 [Bangumi](https://bgm.tv) 查角色名和地名，AI 补上读音和昵称，校对时把听错的人名改对，注音也按正确读音。
+
+## ✍️ 所有日文都有注音
 
 用 AI 学日语最头疼的是**汉字没有读音**。にゃほんご 里所有日文都稳定显示注音：翻译结果、AI 写的文章、语法课例句、AI 的回答，没有例外。
 
-翻译、阅读、精听、语法课、背单词、问 AI 都在一个 App 里，学到的生词一键收进生词本，按记忆规律复习。长按任何日文都能选词查词，安卓系统的文字菜单里也会多一个「查词」，在别的 App 里也能用。
+**阅读**可以让 AI 按你的水平写文章（先上网查资料再写），也能拍书页、漫画识别日文，或者读网页。读的时候点一句话，下面弹出译文、重点词和语法：
 
-</td>
-<td width="38%" align="center"><img src="docs/screenshots/reading.webp" width="240" alt="带注音的阅读"></td>
-</tr>
-</table>
+<p align="center">
+<img width="340" src="docs/screenshots/reading_crop.webp" alt="带注音的阅读">
+&nbsp;
+<img width="340" src="docs/screenshots/sheet_crop.webp" alt="点一句看译文、重点词和语法">
+</p>
 
-## 功能一览
+## 🧭 不知道读什么？点「发现」
 
-<table>
-<tr>
-<td align="center" width="33%"><img src="docs/screenshots/translate.webp" width="230" alt="翻译"></td>
-<td align="center" width="33%"><img src="docs/screenshots/reading_sheet.webp" width="230" alt="句子拆解"></td>
-<td align="center" width="33%"><img src="docs/screenshots/word.webp" width="230" alt="生词本"></td>
-</tr>
-<tr>
-<td valign="top"><b>翻译</b><br>中日互译，自动拆解词汇和语法，不懂的地方接着追问 AI。</td>
-<td valign="top"><b>阅读</b><br>AI 按你的水平写文章（可以先上网查资料），也能拍书页、漫画识别日文、读网页。点一句看译文、重点词和语法。</td>
-<td valign="top"><b>生词本</b><br>FSRS 记忆算法安排复习；每个词有词典释义和 AI 详细讲解（用法、搭配、例句、近义词辨析），记牢的自动移到「已掌握」。</td>
-</tr>
-<tr>
-<td align="center"><img src="docs/screenshots/ask.webp" width="230" alt="问 AI"></td>
-<td align="center"><img src="docs/screenshots/reading_home.webp" width="230" alt="阅读入口"></td>
-<td align="center"><img src="docs/screenshots/listen.webp" width="230" alt="精听"></td>
-</tr>
-<tr>
-<td valign="top"><b>语法</b><br>N5～N1 共 828 个语法点排成循序渐进的课程，每课有中文讲解、例句和小测验，<b>装好就能学</b>；还有一句一练，以及「问 AI」：这个语法怎么用、这个场合日语怎么说。</td>
-<td valign="top"><b>常读</b><br>把常用的要求存下来（「每天一篇科普」「今天的日本新闻」），每天点一下就有一篇新的，不会重样。</td>
-<td valign="top"><b>精听</b><br>单句循环、每句读完自动暂停、调速、横屏左右分栏；点单词查词典，长按自由选词。</td>
-</tr>
-</table>
+<img align="right" width="260" src="docs/screenshots/discover.webp" alt="发现读物">
 
-另外还有：**多设备同步**（手机、平板连同一台电脑，学习进度自动合并）、**离线词典**（JMdict 21 万词条，内置在 App 里，常用的 2.2 万词有中文释义；在「翻译」页输入单词直接查，还可以让 AI 详解例句和用法）、**英语模式**（测试版，英语视频做成中英双语字幕）。
+选个分类，下面马上换一批现成的读物，点开就能读：
+
+| 分类 | 来源 |
+|---|---|
+| 简单日语 | MATCHA やさしい日本語 |
+| 新闻 | NHK ニュース |
+| 童话 · 民间故事 | 青空文库 |
+| 名作短篇 | 青空文库（宫泽贤治、芥川、太宰…） |
+| 日本文化 | 维基百科 |
+| 随便看看 | 维基百科随机条目 |
+
+点开一篇会先显示全文，可以删掉不想读的部分；读起来吃力就点「改写成我的水平」。读完一篇按篇幅给小判，长文章给得多。
+
+还可以把常用的要求存成**常读**（「每天一篇科普」「今天的日本新闻」），每天点一下就有一篇新的，不会重样。
+
+<br clear="right">
+
+## 🔍 输入就查，中文也能查日语
+
+在「翻译」页的输入框里打一个词，不用点按钮，下面直接出词典结果。**离线词典**内置在 App 里（JMdict 21 万词条，常用的 2.2 万词有中文释义），没网也能查。
+
+输入中文会自动反查日语：打「学习」，出来 勉強、学習、学ぶ…… 点开词条还能让 AI 详解：例句、用法、近义词辨析。
+
+<p align="center">
+<img width="300" src="docs/screenshots/dict.webp" alt="输入中文查日语">
+&nbsp;&nbsp;
+<img width="300" src="docs/screenshots/lookup_ai.webp" alt="词条和 AI 详解">
+</p>
+
+长按任何日文都能选词查词；安卓系统的文字菜单里也会多一个「查词」，在别的 App 里也能用。
+
+## 💬 翻译、语法、问 AI
+
+**翻译**：中日互译，自动拆解词汇和语法，不懂的地方接着追问 AI。
+
+**语法**：N5～N1 共 828 个语法点排成循序渐进的课程，每课有中文讲解、例句和小测验，**装好就能学**；还有一句一练。
+
+**问 AI**：这个语法怎么用、这个场合日语怎么说，回答里的日文同样带注音。
+
+**生词本**：学到的生词一键收进来，FSRS 记忆算法安排复习，记牢的自动移到「已掌握」。
+
+<p align="center">
+<img width="270" src="docs/screenshots/translate_crop.webp" alt="翻译并拆解">
+&nbsp;&nbsp;
+<img width="260" src="docs/screenshots/ask_crop.webp" alt="问 AI">
+</p>
+
+## 🐱 学习有猫陪
+
+<img align="right" width="300" src="docs/screenshots/catroom.webp" alt="猫の部屋">
+
+学习的时候攒「小判」（日本古代的金币），有效学习每满 40 分钟掉一个宝箱，花小判开箱。
+
+- **小判**只来自学习行为：复习、翻译、做题、读完文章、听完学习包、学完语法课
+- **宝箱**只来自学习时间
+- 宝箱多了没用，小判多了还能买宝箱，所以认真学的话小判总是够用
+
+开箱收集 **42 只猫（6 种体型）、32 件饰品、8 个场景、8 件家具**，全部是用代码画出来的像素风，每件都带日语名字和例句。把猫和家具摆进自己的和风小屋，猫会在里面走来走去，点一下会用日语跟你说话。
+
+不想要的话，设置里一键切换成「纯净」模式。
+
+<br clear="right">
+
+<p align="center"><img width="640" src="docs/screenshots/cats_all.webp" alt="42 只猫，每行一种体型"><br><sub>全部 42 只猫：每行一种体型，彩色边框是稀有、史诗、传说</sub></p>
+
+## 还有这些
+
+- **多设备同步**：手机、平板连同一台电脑，生词本、复习进度、阅读记录、猫屋自动合并
+- **英语模式**（测试版）：英语视频做成中英双语字幕，点单词查英汉词典
+- **检查更新**：App 和 PC 端每天自动检查一次新版本
 
 <sub>截图里的视频画面打了马赛克。</sub>
 
@@ -90,28 +123,25 @@
 
 在 [Releases](../../releases) 下载 `nyahongo.apk`，传到安卓手机上安装（需要允许「安装未知来源应用」）。目前只有安卓版。
 
-### 2. 填一个 AI 服务的 API Key
+### 2. 填一个 AI 服务
 
-翻译、讲解、出题要用 AI，需要你自己申请一个 API Key（按用量付费，日常学习花得很少）。第一次打开 App 会有引导，也可以在「设置 → AI 接口」里填。
+<img align="right" width="260" src="docs/screenshots/settings_ai.webp" alt="AI 接口设置">
 
-| 服务商 | 申请 Key 的网站 | 说明 |
-|---|---|---|
-| DeepSeek | platform.deepseek.com | 便宜、中文好；**没有看图模型**，用拍照识字要另选一家 |
-| DeepInfra | deepinfra.com | 模型多，文字和看图都有（开发时一直用的这家） |
-| 阿里云百炼 | bailian.console.aliyun.com | 国内直连，通义千问系列，能看图 |
-| 硅基流动 | cloud.siliconflow.cn | 国内直连，开源模型多，能看图 |
+翻译、讲解、出题要用 AI，需要你自己申请一个 API Key（按用量付费，日常学习花得很少）。第一次打开 App 会有引导，也可以在「设置 → AI 接口」里填：接口格式（OpenAI 兼容 / Anthropic / Gemini）、接口地址、API Key。
+
+**推荐 DeepSeek 官方**（platform.deepseek.com）：一个 Key 就能翻译讲解、**拍照识字、联网搜索**，中文好、便宜、国内直接能连。点「常用服务商」里的 DeepSeek 会自动填好地址和模型，旁边的问号里有申请 Key 的图文教程。
+
+也可以用阿里云百炼、硅基流动、DeepInfra、Claude、Gemini，或者填任何兼容的接口地址。这些服务商的文字模型不能看图时，拍照识字可以另选一个看图模型。
 
 填好 Key 后 App 会自动读取这家的模型列表，选一个就能用。
 
-**联网搜索（可选）**：让 AI 写文章前先上网查资料、在「阅读」里搜全网文章，需要 DeepSeek 的 Key（约每千次搜索 5 元人民币）。不填也能用，只能搜日语维基百科。
+<br clear="right">
 
 ### 3. 装 PC 端（可选，逐句精听视频需要）
 
 见下一节。App 里「精听」页标题旁的问号里也有图文教程。
 
 ## PC 端（Windows 版）
-
-<img src="docs/screenshots/pc_import.webp" alt="PC 端：导入">
 
 PC 端是一个独立的桌面程序，负责把视频、播客做成学习包：下载 → 语音转文字（视频自带日语字幕时直接用字幕）→ AI 校对和翻译 → 分词、注音、查词典。
 
@@ -134,14 +164,9 @@ PC 端是一个独立的桌面程序，负责把视频、播客做成学习包�
 - **播客 / 广播**：Apple Podcasts、Voicy、NHK らじる★らじる、radiko、SoundCloud、喜马拉雅、播客的 RSS 地址（Spotify 有加密，不支持）
 - 只想听：勾选「只保留音频」，文件小很多
 - B 站多 P、YouTube 播放列表：勾选「展开整个合集」，每集一个学习包
-- 动画、日剧可以填「作品名」：PC 端先从 [Bangumi](https://bgm.tv) 查角色名、地名，AI 补上读音和昵称，校对时把听错的人名改对、注音也按正确读音；查不全的在旁边「补充专有名词」里自己加
+- 动画、日剧可以填「作品名」：PC 端先从 [Bangumi](https://bgm.tv) 查角色名、地名，AI 补上读音和昵称，校对时把听错的人名改对、注音也按正确读音；查不全的在旁边「补充专有名词」里自己加；打开「自动识别作品名」，作品名空着时按视频标题或文件名自己认
 
-<table>
-<tr>
-<td width="50%"><img src="docs/screenshots/pc_library.webp" alt="PC 端：学习库"></td>
-<td width="50%"><img src="docs/screenshots/pc_phone.webp" alt="PC 端：连接手机"></td>
-</tr>
-</table>
+<p align="center"><img width="49%" src="docs/screenshots/pc_library.webp" alt="PC 端：学习库"> <img width="49%" src="docs/screenshots/pc_phone.webp" alt="PC 端：连接手机"></p>
 
 ### 连接手机
 

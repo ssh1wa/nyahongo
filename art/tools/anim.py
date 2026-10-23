@@ -269,6 +269,10 @@ def rig_of(b: C.Body) -> Rig:
         body, leg_r, legs = (18.0, 31.0, 11.0, 6.5), 1.5, (10.5, 12.5, 23.0, 25.0)
     elif b.key == "surari":
         body, leg_r, legs = (17.0, 29.5, 8.6, 4.4), 1.2, (11.0, 13.0, 21.0, 23.0)
+    elif b.key == "chokon":  # 小猫：身子短、腿细
+        body, leg_r, legs = (17.0, 30.5, 7.4, 4.2), 1.2, (12.0, 13.8, 20.2, 22.0)
+    elif b.key == "oomimi":
+        body, leg_r, legs = (17.0, 29.8, 8.0, 4.4), 1.2, (11.5, 13.3, 20.5, 22.3)
     else:
         body, leg_r, legs = (17.5, 31.0, 9.0, 5.4), 1.5, (11.5, 13.5, 21.5, 23.5)
     # 头的下沿压住身体前上方
@@ -587,9 +591,9 @@ def main():
     bs = C.bodies()
     setup(bs)
     all_cats = {c.id: c for c in C.cats()}
-    order = ["manmaru", "mochi", "surari", "fuwa"]
-    show = {"manmaru": "mike", "mochi": "sabatora", "surari": "shamu", "fuwa": "kijitora"}
-    hats = {"manmaru": "mugiwara", "mochi": "keito", "surari": "oukan", "fuwa": "heddohon"}  # 检查饰品是否跟着头走
+    order = list(C.BODY_ORDER)
+    show = {"manmaru": "mike", "mochi": "sabatora", "surari": "shamu", "fuwa": "kijitora", "chokon": "mikan", "oomimi": "oddo"}
+    hats = {"manmaru": "mugiwara", "mochi": "keito", "surari": "oukan", "fuwa": "heddohon", "chokon": "ribon", "oomimi": "megane"}  # 检查饰品是否跟着头走
     names = list(TIMELINE)
     accs = {a.id: a for a in accessories()}
 

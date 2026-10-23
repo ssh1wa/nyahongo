@@ -74,6 +74,20 @@ def test_manual_terms_merge_first():
     assert glossary.merge(auto, []) is auto
 
 
+def test_guess_work_without_ai_cleans_title(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg.llm.api_key = ""
+    assert glossary.guess_work(cfg, "轻音少女 第二季第01集在线观看-打驴动漫") == "轻音少女"
+    assert glossary.guess_work(cfg, "【4K】葬送のフリーレン 第12話「本物の勇者」") == "葬送のフリーレン"
+    assert glossary.guess_work(cfg, "[Sakurato] Bocchi the Rock! - 05 [1080p][CHS].mkv") == "Bocchi the Rock!"
+    assert glossary.guess_work(cfg, "") is None
+
+
+def test_guess_work_uses_ai(tmp_path, monkeypatch):
+    monkeypatch.setattr(glossary, "chat_json", lambda *a, **k: {"work": ""})
+    assert glossary.guess_work(_cfg(tmp_path), "NHKニュース 7時") is None  # AI 认不出就不猜
+
+
 def test_for_prompt():
     g = {"terms": [{"text": "唯", "reading": "ゆい", "kind": "人名"}, {"text": "DEATH DEVIL", "reading": None, "kind": "组织"}]}
     assert glossary.for_prompt(g) == ["唯（ゆい）", "DEATH DEVIL"]

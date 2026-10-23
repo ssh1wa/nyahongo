@@ -279,7 +279,10 @@ export function extractText(html: string): { title: string; text: string } {
   let body = html
     .replace(/<(script|style|noscript|header|footer|nav|aside)[\s\S]*?<\/\1>/gi, '')
     .replace(/<rt[\s\S]*?<\/rt>|<rp[\s\S]*?<\/rp>/gi, '');
-  const main = body.match(/<div class="main_text">([\s\S]*?)<\/div>/i)?.[1] ?? body.match(/<article[\s\S]*?<\/article>/i)?.[0];
+  // 青空文库：正文里还套着别的 div（字下げ等），不能停在第一个 </div>，要一直取到后面的底本信息
+  const main = body.match(/<div class="main_text">([\s\S]*?)<div class="(?:bibliographical_information|after_text|notation_notes)"/i)?.[1]
+    ?? body.match(/<div class="main_text">([\s\S]*?)<\/div>/i)?.[1]
+    ?? body.match(/<article[\s\S]*?<\/article>/i)?.[0];
   if (main) body = main;
   else {
     const ps = body.match(/<p[\s>][\s\S]*?<\/p>/gi);
@@ -315,7 +318,7 @@ export async function fetchPage(url: string): Promise<{ title: string; text: str
 }
 
 /** 自己下载并解析网页，自动识别 Shift_JIS / EUC-JP（青空文库是 Shift_JIS）。 */
-async function fetchHtml(url: string): Promise<{ title: string; text: string }> {
+export async function fetchHtml(url: string): Promise<{ title: string; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {

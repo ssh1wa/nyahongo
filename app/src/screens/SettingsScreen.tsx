@@ -500,8 +500,8 @@ function SearchSection() {
       <SectionLabel>联网搜索（可选）</SectionLabel>
       <Card style={{ gap: 12 }}>
         <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
-          打开后，「阅读」里 AI 写文章前会先上网查资料，「网上找」也能搜全网的文章。
-          不打开也能用，只是只能搜日语维基百科。
+          打开后，「阅读」里 AI 写文章前会先上网查资料，导入网址时也能更准地读出网页正文。
+          不打开也能用，AI 写文章时只查日语维基百科。
         </Text>
         <Text style={{ color: c.muted, lineHeight: 18, fontSize: 12.5 }}>
           搜索用的是 DeepSeek 的服务，需要 DeepSeek 的 API Key（在 platform.deepseek.com 申请）。费用很低，大约每千次搜索 5 元人民币，搜不到不收费。
@@ -509,11 +509,11 @@ function SearchSection() {
         {reuse ? (
           <StatusLine ok text="上面的 AI 服务已经是 DeepSeek，会直接用那个 Key，这里不用再填" />
         ) : (
-          <KeyField label="DeepSeek API Key" value={own} onChange={change} placeholder="不填就只搜日语维基百科" />
+          <KeyField label="DeepSeek API Key" value={own} onChange={change} placeholder="不填就只查日语维基百科" />
         )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: c.muted, fontSize: 12 }}>
-            {own.trim() || reuse ? '现在：可以搜全网' : '现在：只搜日语维基百科'}
+            {own.trim() || reuse ? '现在：AI 写文章时会查全网' : '现在：AI 写文章时只查日语维基百科'}
           </Text>
           <Button label="测试" kind="secondary" small onPress={run} loading={test.status === 'testing'} disabled={!own.trim() && !reuse} />
         </View>

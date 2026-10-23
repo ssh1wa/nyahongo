@@ -1,7 +1,7 @@
-"""24 只猫的像素图：4 种体型 × 6 只。
+"""42 只猫的像素图：6 种体型 × 7 只。
 
 做法：每种体型用几何形状拼出身体，自动描边和打阴影，同时给每个像素标上部位（头顶、脸、耳朵、背、肚子、爪子、尾巴、尾尖）。
-每只猫只是一份「部位 → 颜色」的配色，加上花纹和特效。动画以后也用同一套部位，所以 24 只猫的动作天然一致。
+每只猫只是一份「部位 → 颜色」的配色，加上花纹和特效。动画以后也用同一套部位，所以所有猫的动作天然一致。
 
 运行：uv run --with pillow --no-project python -I art/tools/cats.py
 输出：art/cats/（每只猫原尺寸 PNG 和放大版，以及总览图 overview.png）
@@ -145,6 +145,25 @@ def bodies() -> dict[str, Body]:
     out["fuwa"] = Body("fuwa", "ふわふわ", [(20.5, 29.5), (27.5, 30.2), (28, 23.5), (26, 21.5)], 1.7,
                        ellipse(15, 24.5, 7.4, 7.6), ellipse(*head_e) | ears | cheeks, head_e, (15, 24.5, 7.4, 7.6), ears,
                        ellipse(12, 30, 2.4, 2.0) | ellipse(18, 30, 2.4, 2.0), 13, face)
+
+    # ちょこん：小猫一样端正地坐着，个子小，豆豆眼（base_cat_options 里的第 2 个方案，再缩小一圈）
+    ears = tri((9.0, 12.4), (9.4, 6.6), (13.2, 9.6)) | tri((21.0, 12.4), (20.6, 6.6), (16.8, 9.6))
+    head_e = (15, 14.6, 6.8, 5.6)
+    face = sym({(11, 14): "e", (11, 15): "e", (9, 17): "b", (10, 9): "i", (10, 10): "i", (11, 10): "i", (13, 18): "m"})
+    face.update({(14, 17): "n", (15, 17): "n"})
+    out["chokon"] = Body("chokon", "ちょこん", [(19, 30.2), (24.5, 30.6), (24.6, 25.0), (23.0, 23.6)], 1.3,
+                         ellipse(15, 25.2, 5.6, 6.0), ellipse(*head_e) | ears, head_e, (15, 25.2, 5.6, 6.0), ears,
+                         ellipse(12.8, 30.4, 1.9, 1.7) | ellipse(17.2, 30.4, 1.9, 1.7), 14, face)
+
+    # おおみみ：大三角耳、小脸大眼，身子细、尾巴细长高翘（像德文卷毛猫）
+    ears = tri((6.4, 13.4), (5.4, 2.6), (13.0, 9.2)) | tri((23.6, 13.4), (24.6, 2.6), (17.0, 9.2))
+    head_e = (15, 15.0, 7.4, 6.0)
+    face = sym({(10, 14): "s", (11, 14): "e", (10, 15): "e", (11, 15): "e", (10, 16): "e", (11, 16): "e",
+                (9, 18): "b", (7, 8): "i", (7, 9): "i", (8, 9): "i", (7, 10): "i", (8, 10): "i", (8, 11): "i", (13, 19): "m"})
+    face.update({(14, 18): "n", (15, 18): "n", (18, 14): "s", (19, 14): "e"})
+    out["oomimi"] = Body("oomimi", "おおみみ", [(19.5, 30), (26.5, 29.5), (27.5, 21), (25, 18.5)], 1.2,
+                         ellipse(15, 25.4, 6.0, 6.4), ellipse(*head_e) | ears, head_e, (15, 25.4, 6.0, 6.4), ears,
+                         ellipse(12.8, 30.4, 1.9, 1.7) | ellipse(17.2, 30.4, 1.9, 1.7), 14, face)
     return out
 
 
@@ -334,6 +353,7 @@ class Cat:
     rarity: str  # common rare epic legendary
     colors: dict[str, str]  # 部位颜色；fur 是默认
     eye: str = "#3A2E2A"
+    eye_r: str | None = None  # 右眼另一种颜色（オッドアイ）
     pattern: Pattern | None = None
     collar: tuple[str, str] | None = None  # 项圈颜色、铃铛颜色
     marks: list[tuple[int, int, str]] = field(default_factory=list)  # 相对额头中心的小标记 (dx, dy, 颜色)
@@ -404,12 +424,13 @@ def render(cat: Cat, bodies_: dict[str, Body]) -> Image.Image:
         px[14, y + 2] = (*OUTLINE, 255)
         px[15, y + 2] = (*OUTLINE, 255)
 
-    eye = hexc(cat.eye)
     for (x, y), k in b.face.items():
+        eye_hex = cat.eye_r if cat.eye_r and x >= 15 else cat.eye
+        eye = hexc(eye_hex)
         if k == "e":
             px[x, y] = (*eye, 255)
         elif k == "s":
-            px[x, y] = (*SHINE, 255) if cat.eye == "#3A2E2A" else (*darken(eye, 0.35), 255)
+            px[x, y] = (*SHINE, 255) if eye_hex == "#3A2E2A" else (*darken(eye, 0.35), 255)
         elif k == "n":
             px[x, y] = (*PINK, 255)
         elif k == "m":
@@ -439,7 +460,7 @@ def render(cat: Cat, bodies_: dict[str, Body]) -> Image.Image:
     return img
 
 
-# ---------------------------------------------------------------- 24 只猫
+# ---------------------------------------------------------------- 42 只猫
 
 def cats() -> list[Cat]:
     BLACK, BLACK_S = "#3E3836", "#2E2927"
@@ -452,6 +473,7 @@ def cats() -> list[Cat]:
         Cat("kutsushita", "manmaru", "rare", {"fur": "#6A645F", "chest": "#FFFDF8", "paw": "#FFFDF8", "tip": "#FFFDF8"}),
         Cat("maneki", "manmaru", "epic", {"fur": "#FFFDF8"}, pattern=patches(("lear", "#E8984A", 0.9), ("rear", BLACK, 0.8), ("lback", "#E8984A", 0.8)),
             collar=("#D8443A", "#F2C94C"), sparkles=[(4, 5, "#F2C94C"), (27, 9, "#F2C94C"), (3, 24, "#FFE9A8")]),
+        Cat("haiiro", "manmaru", "common", {"fur": "#9A9693", "chest": "#C9C5C1", "paw": "#C9C5C1", "inner": "#E8A7B6"}, eye="#6CA86A"),
         # もちもち
         Cat("sabatora", "mochi", "common", {"fur": "#B2B6BA", "face": "#E6E8EA", "chest": "#E6E8EA"}, pattern=stripes("#6A7177")),
         Cat("buchi", "mochi", "common", {"fur": "#FFFDF8"}, pattern=patches(("leye", BLACK, 1.0), ("rback", BLACK, 1.1), ("tail", BLACK, 1))),
@@ -461,6 +483,9 @@ def cats() -> list[Cat]:
         Cat("kinmaneki", "mochi", "legendary", {"fur": "#F2C94C", "chest": "#F8DC7A", "face": "#F8DC7A", "inner": "#E8984A"},
             pattern=patches(("lear", "#D9A42A", 0.9)), collar=("#D8443A", "#FFF2B0"), glow="#FFE58A",
             shine=[(-4, -1), (-3, -1), (4, 0)], sparkles=[(3, 6, "#FFF2B0"), (28, 10, "#FFF2B0"), (2, 20, "#FFE58A"), (29, 21, "#FFE58A")]),
+        Cat("daifuku", "mochi", "epic", {"fur": "#FFFDF8", "chest": "#FFFFFF", "inner": "#F4A6BD"}, pattern=speckles("#EFE6EA", 16),
+            marks=[(0, 0, "#F4A6BD"), (1, 0, "#F4A6BD"), (0, -1, "#F7C3D0"), (1, 1, "#E37E9C")],
+            sparkles=[(4, 9, "#FFFFFF"), (27, 7, "#F7C3D0"), (2, 22, "#FFFFFF")]),
         # すらり
         Cat("kuro", "surari", "common", {"fur": BLACK, "inner": "#8C5A6A"}, eye="#E8C547", blush=False),
         Cat("shamu", "surari", "rare", {"fur": "#F3E7D2", "chest": "#FAF2E4"}, eye="#4A8FD6", pattern=points("#5B4335")),
@@ -470,6 +495,7 @@ def cats() -> list[Cat]:
             marks=[(0, 0, "#F2C94C"), (1, -1, "#F2C94C"), (1, 1, "#F2C94C")], sparkles=[(4, 6, "#FFF2B0"), (27, 4, "#C8D2FF")], blush=False),
         Cat("nekomata", "surari", "legendary", {"fur": "#7B6AA6", "chest": "#9A8BC4", "inner": "#C9A9E0", "tip": "#4E4078"}, eye="#F3D35C",
             extra_tail=[(12, 29.5), (4, 28), (4.5, 17), (7.5, 15)], flames="#B8E2FF", glow="#C9A9E0", blush=False),
+        Cat("takishiido", "surari", "common", {"fur": BLACK, "chest": "#FFFDF8", "paw": "#FFFDF8", "inner": "#8C5A6A"}, eye="#9CC24A", blush=False),
         # ふわふわ
         Cat("kijitora", "fuwa", "common", {"fur": "#A08868", "face": "#DCCBB0", "chest": "#DCCBB0"}, pattern=stripes("#5E4D3A")),
         Cat("kuriimu", "fuwa", "common", {"fur": "#F6E3C2", "chest": "#FBF1DE"}, eye="#C98A3A", pattern=stripes("#EED2A4")),
@@ -480,10 +506,36 @@ def cats() -> list[Cat]:
         Cat("yukimi", "fuwa", "epic", {"fur": "#E6F0F8", "chest": "#FFFFFF", "inner": "#9EC3E6", "tail": "#CFE0EF"}, eye="#5DA2E0",
             marks=[(-1, -1, "#8FB8E0"), (2, -1, "#8FB8E0"), (0, 0, "#8FB8E0"), (1, 0, "#8FB8E0"), (-1, 1, "#8FB8E0"), (2, 1, "#8FB8E0")],
             sparkles=[(4, 6, "#FFFFFF"), (26, 3, "#CFE6FF"), (29, 15, "#FFFFFF")]),
+        Cat("meinkuun", "fuwa", "rare", {"fur": "#8A6A4A", "face": "#B89A78", "chest": "#E9DCC8", "tip": "#3E3028", "ear": "#6E523A"},
+            eye="#C9A13A", pattern=stripes("#4E3A2A")),
+        # ちょこん
+        Cat("mikan", "chokon", "common", {"fur": "#F29A3C", "chest": "#FBD9B0", "paw": "#FBD9B0"}),
+        Cat("goma", "chokon", "common", {"fur": "#8A8580", "chest": "#D6D2CC"}, pattern=speckles("#3E3836", 16)),
+        Cat("kinako", "chokon", "common", {"fur": "#E8CFA0", "chest": "#F7EBD3", "paw": "#F7EBD3"}, pattern=speckles("#C9A66E", 12)),
+        Cat("azuki", "chokon", "rare", {"fur": "#6B3A35", "chest": "#8C524B", "inner": "#C98A8E"}, eye="#E8B04A", pattern=speckles("#4A2622", 10), blush=False),
+        Cat("kohaku", "chokon", "rare", {"fur": "#D9932E", "chest": "#F0C27A", "face": "#E9AE55"}, eye="#F2C94C", pattern=mottled("#B5701E", "#EDB25C")),
+        Cat("momiji", "chokon", "epic", {"fur": "#C8452E", "chest": "#F2B38A", "face": "#E37A4E"}, eye="#F2C94C", pattern=speckles("#F2A43C", 8),
+            marks=[(0, 0, "#F2C94C"), (1, 0, "#F2C94C"), (0, -1, "#F2C94C"), (-1, 0, "#E8983A"), (2, 0, "#E8983A"), (0, 1, "#B5701E")],
+            sparkles=[(4, 8, "#E8452E"), (26, 6, "#F2C94C"), (28, 18, "#E8983A"), (3, 21, "#F2C94C")]),
+        Cat("komaneko", "chokon", "legendary", {"fur": "#B8B4AE", "chest": "#D6D3CE", "inner": "#D8443A", "tip": "#8F8A84"}, eye="#F2C94C",
+            pattern=mottled("#9E9A94", "#C9C5BF"), collar=("#D8443A", "#F2C94C"), glow="#FFE58A",
+            sparkles=[(4, 7, "#FFF2B0"), (26, 5, "#FFF2B0"), (2, 19, "#FFE58A"), (28, 21, "#FFE58A")]),
+        # おおみみ
+        Cat("kuri", "oomimi", "common", {"fur": "#8A5A36", "chest": "#B88A62", "inner": "#C98A8E"}, eye="#E8B04A"),
+        Cat("kafeore", "oomimi", "common", {"fur": "#C8A27A", "face": "#E3CBAE", "chest": "#F3E7D6", "paw": "#F3E7D6"}),
+        Cat("sabashiro", "oomimi", "common", {"fur": "#A8ADB2", "face": "#FFFDF8", "chest": "#FFFDF8", "paw": "#FFFDF8"}, pattern=stripes("#5F676E")),
+        Cat("oddo", "oomimi", "rare", {"fur": "#FFFDF8"}, eye="#4A8FD6", eye_r="#E8B04A"),
+        Cat("yukihyou", "oomimi", "rare", {"fur": "#D8DCE0", "chest": "#F4F6F8", "face": "#EEF1F4", "tip": "#4A4E52"}, eye="#6CB7C2", pattern=spots("#5A5F64")),
+        Cat("hanabi", "oomimi", "epic", {"fur": "#2A2F55", "chest": "#363C6A", "inner": "#8C92D6"}, eye="#F2C94C", pattern=speckles("#FFD36A", 7),
+            sparkles=[(3, 6, "#FF7AA8"), (27, 4, "#7AD7FF"), (28, 15, "#FFD36A"), (2, 17, "#9CF08A"), (25, 1, "#FF7AA8")], blush=False),
+        Cat("houou", "oomimi", "legendary", {"fur": "#D9452E", "chest": "#F2B04A", "face": "#E8763A", "tip": "#F2C94C", "inner": "#F2C94C"}, eye="#F2C94C",
+            pattern=speckles("#F2C94C", 8), flames="#FFB347", glow="#FFC870",
+            sparkles=[(3, 7, "#FFF2B0"), (27, 6, "#FFF2B0"), (2, 20, "#FFC870")]),
     ]
 
 
 RARITY_COLOR = {"common": (140, 132, 120), "rare": (63, 125, 184), "epic": (154, 85, 200), "legendary": (210, 154, 30)}
+BODY_ORDER = ("manmaru", "mochi", "surari", "fuwa", "chokon", "oomimi")
 
 
 def main():
@@ -497,10 +549,10 @@ def main():
         im.save(OUT / f"{c.id}.png")
         im.resize((N * 12, N * 12), Image.NEAREST).save(OUT / f"{c.id}_x12.png")
 
-    order = ["manmaru", "mochi", "surari", "fuwa"]
+    order = list(BODY_ORDER)
     scale, gap, label_h = 6, 18, 26
     cell = N * scale
-    cols = 6
+    cols = 7
     w = gap + cols * (cell + gap) + 120
     row_h = cell + label_h + gap
     h = gap + len(order) * row_h

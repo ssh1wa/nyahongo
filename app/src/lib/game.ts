@@ -1,9 +1,7 @@
-// 学习伙伴（小游戏）：有效学习时间和学习行为换小判，每学满 30 分钟掉一个宝箱，开箱收集猫和装扮。
-// 规则：
-// - 有效时间：App 在前台，且 60 秒内有操作（或精听正在播放），每分钟 1 小判
-// - 行为加分：做什么都有一点，每种每天有上限；复习不看对错，免得为了小判乱按评分
-// - 一天超过 SOFT_CAP 之后收益减半，鼓励每天学一点而不是一次刷很多
-// - 宝箱：学满 30 分钟掉一个，也可以花 BUY_COST 小判买一个；开一个花 OPEN_COST 小判
+// 学习伙伴（小游戏）：学习时间掉宝箱，学习行为换小判（开箱、买箱用），开箱收集猫和装扮。两种来源分开：
+// - 宝箱：有效学习时间每满 40 分钟掉一个（App 在前台，且 3 分钟内有操作或精听正在播放），也可以花 BUY_COST 小判买
+// - 小判：只来自学习行为，每种每天有上限；复习不看对错，免得为了小判乱按评分。读完文章按篇幅、听完学习包按真正听了多久给
+// - 一天超过 SOFT_CAP 之后小判减半，鼓励每天学一点而不是一次刷很多；开一个宝箱花 OPEN_COST 小判
 // - 抽卡：普通 70 / 稀有 24 / 史诗 5 / 传说 1，10 抽必出稀有以上、50 抽必出史诗以上；重复转成毛玉，攒够换指定的
 import { ITEMS, ITEM_BY_ID, RARITY, RARITY_ORDER, STARTER_CAT, STARTER_SCENE, type Item, type Rarity } from './catalog';
 import { deviceId, kvGet, kvSet } from './db';
@@ -11,35 +9,41 @@ import { maxLedger, type GameSync } from './syncMerge';
 
 export type Action = 'review' | 'word' | 'article' | 'listen' | 'grammar' | 'practice' | 'translate' | 'ask' | 'routine' | 'download' | 'firstOfDay';
 
-// 按大概花的时间给分：一张卡几秒钟给 1，翻译、做题要想一会儿给 3，读完一篇 / 听完一集给得多。
-// 大致平衡：认真学 30 分钟 ≈ 时间 30 + 复习、翻译、追问 20~45 ≈ 50~75 小判，加上掉的 1 个宝箱：开掉宝箱（50）后
-// 还会剩 0~25，攒几个小时可以多买一个宝箱（100）。价格见下面的 OPEN_COST、BUY_COST
-export const ACTIONS: Record<Action, { label: string; points: number; dailyCap: number }> = {
-  review: { label: '复习一张卡', points: 1, dailyCap: 150 },
-  word: { label: '加一个生词', points: 1, dailyCap: 30 },
-  translate: { label: '翻译一句', points: 3, dailyCap: 15 },
-  practice: { label: '答一道练习题', points: 3, dailyCap: 20 },
-  ask: { label: '追问 AI 一次', points: 2, dailyCap: 15 },
-  article: { label: '读完一篇精读', points: 6, dailyCap: 6 },
-  listen: { label: '听完一个学习包', points: 10, dailyCap: 6 },
-  grammar: { label: '学完一课语法', points: 8, dailyCap: 6 },
-  routine: { label: '常读的今日一篇', points: 3, dailyCap: 3 },
+// 按大概花的时间给分：一张卡几秒钟给 1，翻译、做题要想一会儿给 5，读完一篇 / 听完一集 / 学完一课给得多。
+// 大致平衡（2026-10 调过两次）：学 40 分钟掉 1 个宝箱，这 40 分钟里不管精听、阅读、语法还是翻译，
+// 行为分大约 50~70 小判，开完这个宝箱（40）还有富余。宝箱多出来没用，小判多出来能买宝箱（80），所以宁可小判略多。
+// range：按分量给的（读完文章按句数、听完学习包按真正听了几分钟），界面上显示成「8~40」
+export const ACTIONS: Record<Action, { label: string; points: number; dailyCap: number; range?: [number, number] }> = {
+  review: { label: '复习一张卡', points: 1, dailyCap: 100 },
+  word: { label: '加一个生词', points: 2, dailyCap: 30 },
+  translate: { label: '翻译一句', points: 5, dailyCap: 20 },
+  practice: { label: '答一道练习题', points: 5, dailyCap: 20 },
+  ask: { label: '追问 AI 一次', points: 3, dailyCap: 15 },
+  article: { label: '读完一篇精读（按篇幅）', points: 8, dailyCap: 6, range: [8, 40] },
+  listen: { label: '听完一个学习包（按听了多久）', points: 5, dailyCap: 6, range: [5, 50] },
+  grammar: { label: '学完一课语法', points: 20, dailyCap: 6 },
+  routine: { label: '常读的今日一篇', points: 5, dailyCap: 3 },
   download: { label: '下载一个学习包', points: 2, dailyCap: 10 },
-  firstOfDay: { label: '今天第一次学习', points: 10, dailyCap: 1 },
+  firstOfDay: { label: '今天第一次学习', points: 15, dailyCap: 1 },
 };
 
-export const MINUTE_POINTS = 1;
-export const CHEST_SECONDS = 30 * 60;
-// 宝箱和小判的平衡：认真学 30 分钟最少约 30（时间）+ 十几（复习、翻译等）小判，同时掉 1 个宝箱。
-// 开箱价定在这个数附近，宝箱基本随掉随开、不会越攒越多；行为分多的人小判有富余，可以买宝箱（买 + 开一共是开箱价的三倍），
-// 富余的小判有地方花，又不至于便宜到让学习时间变得没意义。
-export const OPEN_COST = 50;
-export const BUY_COST = 100;
+export const CHEST_SECONDS = 40 * 60;
+// 宝箱和小判的平衡：学 40 分钟掉 1 个宝箱，同时行为分大约 50~70 小判，开箱价 40，宝箱随掉随开、不会越攒越多；
+// 富余的小判可以买宝箱（买 + 开一共是开箱价的三倍），又不至于便宜到让学习时间变得没意义。
+export const OPEN_COST = 40;
+export const BUY_COST = 80;
+
+/** 读完一篇文章给多少：每 1.5 句 1 小判，8~40 */
+export const articlePoints = (sentences: number) => Math.min(40, Math.max(8, Math.round(sentences / 1.5)));
+/** 听完一个学习包给多少：真正听过的每分钟 1.5 小判，5~50（拖进度条跳过去的不算） */
+export const listenPoints = (heardSeconds: number) => Math.min(50, Math.max(5, Math.round((heardSeconds / 60) * 1.5)));
+/** 真正听过全长的这么多才算听完；直接拖到结尾不算 */
+export const LISTEN_MIN_RATIO = 0.5;
 
 /** 现在能不能开宝箱：有宝箱，小判也够开箱价 */
 export const canOpen = (s: Pick<GameState, 'chests' | 'coins'>) => s.chests > 0 && s.coins >= OPEN_COST;
-export const SOFT_CAP = 150;
-const IDLE_MS = 60_000;
+export const SOFT_CAP = 200;
+export const IDLE_MS = 180_000; // 这么久没操作就不算在学（精听播放时除外）
 const FAST_REVIEW_MS = 1500;
 export const PITY_RARE = 10;
 export const PITY_EPIC = 50;
@@ -269,9 +273,10 @@ let lastReviewAt = 0;
 
 /**
  * 记一次学习行为。key 用来去重（比如同一个学习包只算一次下载、同一篇文章只算一次读完）。
+ * points：按分量给的行为（读完文章）传这次给多少，会限制在 range 里。
  * 不会抛错：小游戏出问题不能影响学习功能。
  */
-export function award(action: Exclude<Action, 'firstOfDay'>, key?: string): void {
+export function award(action: Exclude<Action, 'firstOfDay'>, key?: string, points?: number): void {
   if (action === 'review') {
     const now = Date.now();
     const fast = now - lastReviewAt < FAST_REVIEW_MS;
@@ -285,7 +290,8 @@ export function award(action: Exclude<Action, 'firstOfDay'>, key?: string): void
     if ((s.today.counts[action] ?? 0) >= def.dailyCap) return;
     if (k) s.today.keys = [...s.today.keys, k].slice(-300);
     s.today.counts[action] = (s.today.counts[action] ?? 0) + 1;
-    const gained = addPoints(s, def.points) + firstOfDay(s);
+    const pts = points !== undefined && def.range ? Math.min(def.range[1], Math.max(def.range[0], points)) : def.points;
+    const gained = addPoints(s, pts) + firstOfDay(s);
     emit({ type: 'gain', points: gained, label: def.label });
   }).catch(() => {});
 }
@@ -303,7 +309,7 @@ export const markActive = () => { lastActive = Date.now(); };
 export const setMediaPlaying = (v: boolean) => { mediaPlaying = v; if (v) markActive(); };
 export const setForeground = (v: boolean) => { foreground = v; };
 
-/** 每 tick 秒调用一次；攒满一分钟写一次库，给一分钟的小判。 */
+/** 每 tick 秒调用一次；攒满一分钟写一次库，累计到下一个宝箱（学习时间不给小判，小判只来自学习行为）。 */
 export function tick(seconds: number): void {
   if (!foreground) return;
   if (!mediaPlaying && Date.now() - lastActive > IDLE_MS) return;
@@ -313,8 +319,8 @@ export function tick(seconds: number): void {
   pendingSeconds = 0;
   void mutate((s) => {
     addSeconds(s, sec);
-    addPoints(s, (sec / 60) * MINUTE_POINTS);
-    firstOfDay(s);
+    const gained = firstOfDay(s);
+    if (gained) emit({ type: 'gain', points: gained, label: ACTIONS.firstOfDay.label });
   }).catch(() => {});
 }
 

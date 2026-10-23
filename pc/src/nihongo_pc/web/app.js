@@ -171,7 +171,8 @@ function renderLibrary() {
         <div class="work-row">
           <input class="text-input" id="work" maxlength="80" autocomplete="off" placeholder="作品名（可选），例如 轻音少女">
           <input class="text-input" id="terms" maxlength="500" autocomplete="off" placeholder="补充专有名词（可选），例如 唯（ゆい） 桜が丘">
-          <span class="hint">填作品名会先从 Bangumi 查角色名、地名，AI 补上读音和昵称；查不到或不全的，在右边自己补，用空格隔开，括号里可以写读音。AI 校对时会把听错的人名改对，注音也按这里的读音。</span>
+          <label class="switch" title="作品名空着时，从视频标题或文件名里认出是哪部作品（用 AI 认，花费很少），再查角色名"><input type="checkbox" id="auto-work"><span class="track"></span>自动识别作品名</label>
+          <span class="hint">填作品名会先从 Bangumi 查角色名、地名，AI 补上读音和昵称；查不到或不全的，在右边自己补，用空格隔开，括号里可以写读音。AI 校对时会把听错的人名改对，注音也按这里的读音。打开「自动识别作品名」，作品名空着时会按视频标题或文件名自己认（手动填的优先）。</span>
         </div>
         <div class="sites">
           <strong>支持的网站</strong>
@@ -199,6 +200,9 @@ function renderLibrary() {
   const workBox = $("#work");
   workBox.value = currentWork;
   workBox.addEventListener("input", () => { currentWork = workBox.value.trim(); });
+  const autoWork = $("#auto-work");
+  autoWork.checked = store.get("autoWork", false);
+  autoWork.addEventListener("change", () => store.set("autoWork", autoWork.checked));
   const termsBox = $("#terms");
   termsBox.value = currentTerms;
   termsBox.addEventListener("input", () => { currentTerms = termsBox.value.trim(); });
@@ -218,7 +222,7 @@ function renderLibrary() {
     const btn = e.submitter;
     if (btn) { btn.disabled = true; btn.textContent = playlist.checked ? "展开合集中…" : "提交中…"; }
     try {
-      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked, lang: langEn.checked ? "en" : "ja", work: currentWork, terms: currentTerms }) });
+      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked, lang: langEn.checked ? "en" : "ja", work: currentWork, terms: currentTerms, auto_work: autoWork.checked }) });
       urlBox.value = "";
       autoGrow();
       toast(r.failed.length ? `已加入 ${r.created} 个任务，${r.failed.length} 个合集展开失败，按单个链接处理` : `已加入 ${r.created} 个任务`);
@@ -317,7 +321,7 @@ async function refreshJobs() {
   wrap.querySelectorAll("[data-overwrite]").forEach((b) => b.addEventListener("click", async () => {
     const job = data.jobs.find((j) => j.id === b.dataset.overwrite);
     await api(`/api/jobs/${job.id}`, { method: "DELETE" });
-    await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: job.source, audio_only: job.audio_only, overwrite: true, title: job.title, lang: job.lang || "ja", work: job.work, terms: job.terms }) });
+    await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: job.source, audio_only: job.audio_only, overwrite: true, title: job.title, lang: job.lang || "ja", work: job.work, terms: job.terms, auto_work: job.auto_work }) });
     toast("已重新加入队列");
     refreshJobs();
   }));
@@ -378,7 +382,7 @@ let uploading = false;
 let uploadSeq = 0;
 
 function uploadFile(file) {
-  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja", work: currentWork, terms: currentTerms });
+  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja", work: currentWork, terms: currentTerms, autoWork: store.get("autoWork", false) });
   refreshJobs();
   pumpUploads();
 }
@@ -391,7 +395,7 @@ function pumpUploads() {
   uploading = true;
   u.started = true;
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}&lang=${u.lang}&work=${encodeURIComponent(u.work || "")}&terms=${encodeURIComponent(u.terms || "")}`);
+  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}&lang=${u.lang}&work=${encodeURIComponent(u.work || "")}&terms=${encodeURIComponent(u.terms || "")}&auto_work=${u.autoWork}`);
   xhr.upload.onprogress = (e) => { if (e.lengthComputable) u.progress = e.loaded / e.total; };
   xhr.onloadend = () => {
     uploads.delete(key);
