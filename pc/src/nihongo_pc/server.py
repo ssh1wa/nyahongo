@@ -263,6 +263,7 @@ class Job:
     error: str = ""
     exists: bool = False  # 出错原因是学习包已存在，可以选择覆盖
     pkg_id: str = ""
+    notes: list[str] = field(default_factory=list)  # 要让用户知道的情况，比如显卡用不了改用 CPU
     created: float = field(default_factory=time.time)
 
 
@@ -283,9 +284,14 @@ def _worker() -> None:
             if stage == 0 and fraction == 1:  # 下载阶段结束时 detail 是视频标题
                 job.display = detail
 
+        def notice(msg: str) -> None:
+            print(f"  {msg}")  # 也写进日志
+            if msg not in job.notes:
+                job.notes.append(msg)
+
         try:
             opts = Options(audio_only=job.audio_only, overwrite=job.overwrite, title=job.title, lang=job.lang)
-            result = run(job.source, load_config(), opts, progress)
+            result = run(job.source, load_config(), opts, progress, notice)
             job.pkg_id = result.pkg_dir.name
             job.display = result.title
             job.detail = f"{result.sentence_count} 句 · {result.size_mb:.0f} MB · 用时 {result.seconds:.0f} 秒"

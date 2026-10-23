@@ -6,6 +6,7 @@ split_sentences() 再把它切成适合逐句精听的句子。
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import site
@@ -52,8 +53,8 @@ def _register_cuda_dlls() -> None:
 _model_cache: dict[tuple, object] = {}
 
 
-def _load_model(cfg: WhisperConfig):
-    """加载模型；网页界面里连续处理多个视频时复用同一个模型。"""
+def _load_model(cfg: WhisperConfig) -> tuple[object, str]:
+    """加载模型，返回 (模型, 实际用的设备 cuda / cpu)；网页界面里连续处理多个视频时复用同一个模型。"""
     key = (cfg.model, cfg.device, cfg.compute_type)
     if key not in _model_cache:
         _model_cache.clear()  # 只留一个，显存有限
@@ -80,14 +81,37 @@ def _create_model(cfg: WhisperConfig):
     compute_type = cfg.compute_type
     if compute_type == "auto":
         compute_type = "float16" if device == "cuda" else "int8"
-    return WhisperModel(cfg.model, device=device, compute_type=compute_type)
+    return WhisperModel(cfg.model, device=device, compute_type=compute_type), device
+
+
+# 显卡出问题的报错：缺 CUDA 组件、显存不够、驱动太旧等，这些换 CPU 还能跑
+_GPU_ERROR = re.compile(r"cuda|cudnn|cublas|nvrtc|out of memory|\.dll|gpu", re.I)
 
 
 def transcribe(
-    media: Path, cfg: WhisperConfig, on_progress: Callable[[float], None] | None = None, language: str = "ja"
+    media: Path, cfg: WhisperConfig, on_progress: Callable[[float], None] | None = None, language: str = "ja",
+    notice: Callable[[str], None] = print,
 ) -> list[dict]:
-    """返回 Whisper 原始分段 [{start, end, text, words: [{start, end, word}]}]。language：ja / en"""
-    model = _load_model(cfg)
+    """返回 Whisper 原始分段 [{start, end, text, words: [{start, end, word}]}]。language：ja / en
+
+    显卡加载或识别出错时自动改用 CPU 重来；用了 CPU 会通过 notice 告诉用户（界面上显示在任务里）。
+    """
+    try:
+        return _transcribe(media, cfg, on_progress, language, notice)
+    except Exception as e:  # noqa: BLE001 — 只有显卡相关的错误才换 CPU，其他照常抛出
+        if cfg.device == "cpu" or not _GPU_ERROR.search(f"{type(e).__name__} {e}"):
+            raise
+        _model_cache.clear()
+        reason = str(e).splitlines()[0][:120] if str(e) else type(e).__name__
+        notice(f"显卡识别出错（{reason}），改用 CPU 识别语音，会慢很多")
+        cpu = dataclasses.replace(cfg, device="cpu", compute_type="int8")
+        return _transcribe(media, cpu, on_progress, language, lambda _msg: None)
+
+
+def _transcribe(media: Path, cfg: WhisperConfig, on_progress, language: str, notice) -> list[dict]:
+    model, device = _load_model(cfg)
+    if device == "cpu" and cfg.device == "auto":
+        notice("没有检测到可用的 NVIDIA 显卡，用 CPU 识别语音，会慢很多（可以在设置里换成 medium 或 small 模型）")
     segments, info = model.transcribe(
         str(media),
         language=language,

@@ -60,7 +60,7 @@ export function downloadPackage(base: string, meta: PackageMeta, onProgress: (fr
   const controller = new AbortController();
   const done = (async () => {
     ensureRoot();
-    const files = await fetchJson<Array<{ name: string; size: number }>>(`${base}/api/library/${meta.id}/files`);
+    const files = await fetchJson<Array<{ name: string; size: number }>>(`${base}/api/library/${encodeURIComponent(meta.id)}/files`);
     const total = files.reduce((n, f) => n + f.size, 0) || 1;
     const part = new Directory(ROOT, `${meta.id}.part`);
     if (part.exists) part.delete();
@@ -68,7 +68,7 @@ export function downloadPackage(base: string, meta: PackageMeta, onProgress: (fr
     let finished = 0;
     try {
       for (const f of files) {
-        await File.downloadFileAsync(`${base}/api/library/${meta.id}/files/${encodeURIComponent(f.name)}`, new File(part, f.name), {
+        await File.downloadFileAsync(`${base}/api/library/${encodeURIComponent(meta.id)}/files/${encodeURIComponent(f.name)}`, new File(part, f.name), {
           idempotent: true,
           signal: controller.signal,
           onProgress: ({ bytesWritten }) => onProgress(Math.min((finished + bytesWritten) / total, 0.999)),

@@ -119,7 +119,9 @@ def package_exists(cfg: Config, pkg_id: str) -> bool:
     return (cfg.library / pkg_id / "meta.json").exists()
 
 
-def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_progress) -> Result:
+def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_progress,
+        notice: Callable[[str], None] = print) -> Result:
+    """notice：处理过程中要让用户知道的情况（比如显卡用不了改用 CPU），界面上显示在任务里"""
     started = time.time()
 
     if is_url(source):
@@ -153,7 +155,8 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
             progress(1, 1, "使用已缓存的转写结果")
         else:
             progress(1, 0, "加载 Whisper 模型")
-            raw = transcribe(media, cfg.whisper, on_progress=lambda f: progress(1, f, "识别语音"), language=opts.lang)
+            raw = transcribe(media, cfg.whisper, on_progress=lambda f: progress(1, f, "识别语音"), language=opts.lang,
+                             notice=notice)
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
             progress(1, 1, "转写完成")
@@ -197,7 +200,7 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         packed = pkg_dir / ("media" + media.suffix)
         shutil.copy2(media, packed)
     else:
-        packed = compress(media, pkg_dir, cfg, opts.audio_only)
+        packed = compress(media, pkg_dir, cfg, opts.audio_only, notice)
     if packed.suffix == ".mp4":
         make_thumbnail(packed, pkg_dir, cfg.ffmpeg_path())
     write_package(pkg_dir, media=packed, title=title, source_url=url,

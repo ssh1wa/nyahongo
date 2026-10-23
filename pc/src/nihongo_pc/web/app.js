@@ -129,11 +129,11 @@ let cleanup = () => {};
 function route() {
   cleanup();
   cleanup = () => {};
-  const m = location.hash.match(/^#\/play\/([\w-]+)/);
+  const m = location.hash.match(/^#\/play\/([^/?]+)/);
   const page = m ? "library" : location.hash.replace(/^#\/?/, "").split("/")[0] || "add";
   markNav(page);
   app.scrollTop = 0;
-  if (m) renderPlayer(m[1]);
+  if (m) renderPlayer(decodeURIComponent(m[1])); // 本地文件的 id 可能带中文，地址里是编码过的
   else if (page === "settings") renderSettings();
   else if (page === "library") renderLibraryPage();
   else if (page === "phone") renderPhone();
@@ -278,19 +278,19 @@ async function loadLibrary() {
     e.stopPropagation();
     const item = items.find((x) => x.id === btn.dataset.id);
     if (!confirm(`删除「${item.title}」？\n学习包文件会被删除，原始下载文件保留。`)) return;
-    try { await api(`/api/library/${item.id}`, { method: "DELETE" }); toast("已删除"); loadLibrary(); }
+    try { await api(`/api/library/${encodeURIComponent(item.id)}`, { method: "DELETE" }); toast("已删除"); loadLibrary(); }
     catch (err) { toast(err.message); }
   }));
 }
 
 function cardHtml(m) {
   const thumb = m.has_thumb
-    ? `<img src="/api/library/${m.id}/thumb" alt="" loading="lazy">`
+    ? `<img src="/api/library/${encodeURIComponent(m.id)}/thumb" alt="" loading="lazy">`
     : m.media_type === "audio" ? ICONS.audio : ICONS.film;
   const source = (m.lang === "en" ? '<span class="tag manual">英语</span>' : "")
     + (m.subtitle_source === "manual" ? '<span class="tag manual">人工字幕</span>' : '<span class="tag">AI 转写</span>');
   return `
-    <a class="card" href="#/play/${m.id}">
+    <a class="card" href="#/play/${encodeURIComponent(m.id)}">
       <button class="card-delete" data-id="${m.id}" title="删除">${ICONS.trash}</button>
       ${m.source_url ? `<button class="card-delete redo" data-redo="${m.id}" title="重新处理（用上最新的 AI 校对和词典）">${ICONS.replay}</button>` : ""}
       <div class="thumb ${m.media_type === "audio" ? "audio" : ""}">${thumb}<span class="duration">${fmtTime(m.duration)}</span></div>
@@ -346,6 +346,9 @@ function stepperHtml(job) {
   }).join('<span class="step-sep"></span>');
 }
 
+// 处理中遇到的情况（比如显卡用不了改用 CPU）
+const notesHtml = (j) => (j.notes || []).map((n) => `<div class="job-note">${esc(n)}</div>`).join("");
+
 function jobHtml(j) {
   const title = `<div class="job-title" title="${esc(j.source)}">${esc(j.display)}</div>`;
   if (j.status === "queued") {
@@ -359,22 +362,22 @@ function jobHtml(j) {
       ? '<div class="progress indeterminate"><div></div></div>'
       : `<div class="progress"><div style="width:${Math.round(p * 100)}%"></div></div>`;
     return `<div class="job">${title}<div class="job-actions"></div>
-      <div class="stepper">${stepperHtml(j)}<span style="margin-left:8px">${esc(j.detail)}</span></div>${bar}</div>`;
+      <div class="stepper">${stepperHtml(j)}<span style="margin-left:8px">${esc(j.detail)}</span></div>${bar}${notesHtml(j)}</div>`;
   }
   if (j.status === "done") {
     return `<div class="job done">${title}
       <div class="job-actions">
-        <a class="btn small primary" href="#/play/${j.pkg_id}">开始学习</a>
+        <a class="btn small primary" href="#/play/${encodeURIComponent(j.pkg_id)}">开始学习</a>
         <button class="btn small ghost" data-dismiss="${j.id}" title="移除">${ICONS.close}</button>
       </div>
-      <div class="job-detail">✓ ${esc(j.detail)}</div></div>`;
+      <div class="job-detail">✓ ${esc(j.detail)}</div>${notesHtml(j)}</div>`;
   }
   const exists = j.exists
-    ? `<a class="btn small" href="#/play/${j.pkg_id}">打开已有</a><button class="btn small" data-overwrite="${j.id}">覆盖重新生成</button>`
+    ? `<a class="btn small" href="#/play/${encodeURIComponent(j.pkg_id)}">打开已有</a><button class="btn small" data-overwrite="${j.id}">覆盖重新生成</button>`
     : "";
   return `<div class="job error">${title}
     <div class="job-actions">${exists}<button class="btn small ghost" data-dismiss="${j.id}" title="移除">${ICONS.close}</button></div>
-    <div class="job-detail">${esc(j.error)}</div></div>`;
+    <div class="job-detail">${esc(j.error)}</div>${notesHtml(j)}</div>`;
 }
 
 function uploadHtml(u) {
@@ -451,7 +454,7 @@ async function renderPlayer(id) {
   app.className = "player-page";
   app.innerHTML = '<div class="empty">加载中…</div>';
   let data;
-  try { data = await api(`/api/library/${id}`); } catch (err) {
+  try { data = await api(`/api/library/${encodeURIComponent(id)}`); } catch (err) {
     app.innerHTML = `<div class="empty">打不开这个学习包：${esc(err.message)}<br><br><a class="btn" href="#/library">返回学习库</a></div>`;
     return;
   }
@@ -469,8 +472,8 @@ async function renderPlayer(id) {
     <div class="player-layout">
       <div class="stage">
         ${isVideo
-          ? `<div class="video-box"><video id="media" src="/api/library/${id}/media" preload="auto" playsinline></video></div>`
-          : `<div class="audio-box">${ICONS.audio}<div>${esc(meta.title)}</div><audio id="media" src="/api/library/${id}/media" preload="auto"></audio></div>`}
+          ? `<div class="video-box"><video id="media" src="/api/library/${encodeURIComponent(id)}/media" preload="auto" playsinline></video></div>`
+          : `<div class="audio-box">${ICONS.audio}<div>${esc(meta.title)}</div><audio id="media" src="/api/library/${encodeURIComponent(id)}/media" preload="auto"></audio></div>`}
         <div class="timeline" id="timeline"><div class="fill" id="fill"></div></div>
         <div class="controls">
           <button class="icon-btn" id="btn-prev" title="上一句（←）">${ICONS.prev}</button>

@@ -13,6 +13,7 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from .config import Config
 from .furigana import tokenize
@@ -42,7 +43,7 @@ def probe(media: Path, ffmpeg: str) -> dict:
     return info
 
 
-def compress(media: Path, out_dir: Path, cfg: Config, audio_only: bool) -> Path:
+def compress(media: Path, out_dir: Path, cfg: Config, audio_only: bool, notice: Callable[[str], None] = print) -> Path:
     ffmpeg = cfg.ffmpeg_path()
     info = probe(media, ffmpeg)
     if audio_only or info["vcodec"] is None:
@@ -78,8 +79,8 @@ def compress(media: Path, out_dir: Path, cfg: Config, audio_only: bool) -> Path:
     nvenc = base + ["-c:v", "hevc_nvenc", "-preset", "p5", "-cq", "28", "-tag:v", "hvc1", str(out)]
     result = subprocess.run(nvenc, capture_output=True, text=True, errors="replace")
     if result.returncode != 0:
-        reason = "，需要更新 NVIDIA 驱动" if "minimum required Nvidia driver" in result.stderr else ""
-        print(f"  显卡编码不可用{reason}，改用 CPU 编码（较慢）")
+        reason = "（需要更新 NVIDIA 显卡驱动）" if "minimum required Nvidia driver" in result.stderr else ""
+        notice(f"显卡编码视频不可用{reason}，改用 CPU 编码，会慢一些")
         x264 = base + ["-c:v", "libx264", "-preset", "medium", "-crf", "24", str(out)]
         subprocess.run(x264, check=True)
     return out
