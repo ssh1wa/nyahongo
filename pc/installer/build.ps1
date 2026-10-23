@@ -1,4 +1,4 @@
-﻿# 生成电脑端安装包：pc\installer\Output\nyahongo-pc-setup-<版本>.exe
+﻿# 生成 PC 端（Windows 版）安装包：pc\installer\Output\nyahongo-pc-setup-<版本>.exe
 # 需要：Inno Setup 6（winget install JRSoftware.InnoSetup）、uv（会把本机的 uv.exe 打进安装包）
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
@@ -14,8 +14,10 @@ $uv = (Get-Command uv -ErrorAction Stop).Source
 New-Item -ItemType Directory -Force bin | Out-Null
 Copy-Item $uv bin\uv.exe -Force
 
-# 「国内网络」选项装上的标记文件，内容不重要
-Set-Content use-mirror.txt '安装时选了国内网络：语音识别模型从 hf-mirror.com 下载。删掉这个文件就改回官方源。' -Encoding utf8
+# 安装时勾了「国内网络」用的配置：和模板一样，只是打开了模型镜像
+$cfg = Get-Content ..\config.example.toml -Raw -Encoding utf8
+if ($cfg -notmatch 'hf_mirror = false') { throw 'config.example.toml 里找不到 hf_mirror = false' }
+[IO.File]::WriteAllText("$PSScriptRoot\config.mirror.toml", ($cfg -replace 'hf_mirror = false', 'hf_mirror = true '), [Text.UTF8Encoding]::new($false))
 
 # 图标：用 App 的图标生成多尺寸 ico
 uv run --with pillow --no-project python -I -c @"

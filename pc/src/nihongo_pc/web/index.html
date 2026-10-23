@@ -3,25 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>にゃほんご 电脑端</title>
+  <title>にゃほんご PC 端</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#/">
-      <img class="brand-mark" src="icon.png" alt="">
-      <span class="brand-text"><span lang="ja">にゃほんご</span><small>电脑端 · 学习库</small></span>
-    </a>
-    <nav class="topbar-actions">
-      <span class="lan-chip" id="lan-chip" hidden></span>
-      <button class="icon-btn" id="theme-toggle" title="切换深色 / 浅色">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
-      </button>
-    </nav>
-  </header>
-
-  <main id="app"></main>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/">
+        <img class="brand-mark" src="icon.png" alt="">
+        <span class="brand-text"><span lang="ja">にゃほんご</span><small>PC 端 · Windows 版</small></span>
+      </a>
+      <nav class="nav">
+      <a class="nav-item" href="#/" data-nav="add"><svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></svg><span>导入</span><span class="nav-badge" id="badge-add"></span></a>
+      <a class="nav-item" href="#/library" data-nav="library"><svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg><span>学习库</span><span class="nav-badge" id="badge-library"></span></a>
+      <a class="nav-item" href="#/phone" data-nav="phone"><svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v13h8V5zm4 14.2a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z"/></svg><span>手机</span><span class="nav-badge" id="badge-phone"></span></a>
+      <a class="nav-item" href="#/settings" data-nav="settings"><svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M19.14 12.94a7.43 7.43 0 0 0 .05-.94 7.43 7.43 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.43 7.43 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.8a.5.5 0 0 0 .5-.42l.36-2.54a7.03 7.03 0 0 0 1.62-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5z"/></svg><span>设置</span><span class="nav-badge" id="badge-settings"></span></a>
+      </nav>
+      <div class="side-jobs" id="side-jobs"></div>
+      <div class="sidebar-foot">
+        <a class="side-lan" id="side-lan" href="#/phone" hidden></a>
+        <button class="icon-btn" id="theme-toggle" title="切换深色 / 浅色">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+        </button>
+      </div>
+    </aside>
+    <main id="app"></main>
+  </div>
 
   <div class="drop-overlay" id="drop-overlay">
     <div class="drop-box">

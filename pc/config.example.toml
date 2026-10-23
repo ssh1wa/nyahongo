@@ -1,8 +1,10 @@
-# 复制为 config.toml 后按需修改。config.toml 不会被提交到 git。
+# にゃほんご PC 端的设置。一般在 PC 端的「设置」页里改就行，也可以直接编辑这个文件。
+# 从源码运行时复制一份改名为 config.toml。这个文件不会被提交到 git（里面有 API Key）。
 
 [paths]
 workspace = "workspace"   # 下载的原始文件
-library = "library"       # 生成的学习包，手机从这里同步
+library = "library"       # 生成的学习包，手机从这里下载
+sync = "sync"             # 多设备同步的数据和备份
 
 [ffmpeg]
 path = ""                 # 留空自动查找
@@ -10,7 +12,7 @@ path = ""                 # 留空自动查找
 [download]
 proxy = ""                # 例如 "http://127.0.0.1:7890"，只用于下面列出的网站
 proxy_domains = ["youtube.com", "youtu.be", "nicovideo.jp"]
-cookies_from_browser = "" # 需要登录的内容才填，例如 "edge"、"chrome"
+cookies_from_browser = "" # 需要登录才能看的内容：edge / chrome / firefox
 max_height = 720
 
 [whisper]
@@ -18,10 +20,11 @@ model = "large-v3"        # 也可以用 "kotoba-tech/kotoba-whisper-v2.0-faster
 device = "auto"           # auto / cuda / cpu
 compute_type = "auto"
 beam_size = 5
-initial_prompt = ""       # 可填角色名、专有名词，提高识别准确率
+initial_prompt = ""       # 角色名、专有名词，提高识别准确率
+hf_mirror = false         # 模型从国内镜像 hf-mirror.com 下载
 
 [llm]
-# 任何 OpenAI 兼容接口都可以（DeepInfra、DeepSeek、本地模型……）
+# 任何兼容 OpenAI 格式的接口都可以（DeepSeek、DeepInfra、阿里云百炼、硅基流动……）
 base_url = "https://api.deepinfra.com/v1/openai"
-api_key = ""              # 也可以不填这里，改用环境变量 NIHONGO_LLM_API_KEY
+api_key = ""              # 也可以不填，改用环境变量 NIHONGO_LLM_API_KEY
 model = ""

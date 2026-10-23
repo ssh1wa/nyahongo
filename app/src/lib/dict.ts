@@ -1,5 +1,5 @@
 // 手机离线词典：从电脑下载 JMdict（含电脑上已经翻译好的中文释义），按原形+读音查词。
-// 没有中文释义的词条，查到时再让 AI 只翻译英文义项（和电脑端同样的规则），结果存在手机上。
+// 没有中文释义的词条，查到时再让 AI 只翻译英文义项（和 PC 端同样的规则），结果存在手机上。
 import { Directory, File, Paths } from 'expo-file-system';
 import * as SQLite from 'expo-sqlite';
 import { kvGet, kvSet } from './db';
@@ -31,7 +31,7 @@ function openDict(): Promise<SQLite.SQLiteDatabase> | null {
 
 export async function remoteDictInfo(pcUrl: string): Promise<DictInfo & { exists: boolean }> {
   const res = await fetch(`${pcUrl}/api/dictionary`);
-  if (!res.ok) throw new Error(`电脑端返回错误 HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`PC 端返回错误 HTTP ${res.status}`);
   return res.json();
 }
 
@@ -79,7 +79,7 @@ const commonPrefix = (a: string, b: string) => {
 
 /**
  * 查词：base 是原形（行く），reading 是平假名读音（可以是活用后的，比如 いっ）。
- * 打分规则和电脑端 dictionary.py 的 lookup 一致：写法完全匹配、常用词、读音前缀越长越优先。
+ * 打分规则和 PC 端 dictionary.py 的 lookup 一致：写法完全匹配、常用词、读音前缀越长越优先。
  */
 export async function lookup(base: string, reading?: string | null): Promise<DictEntry | null> {
   const db = await openDict();

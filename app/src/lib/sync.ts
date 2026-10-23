@@ -1,4 +1,4 @@
-// 多设备同步：手机、平板通过电脑交换学习数据（电脑端 /api/sync 只存一份合并好的数据）。
+// 多设备同步：手机、平板通过电脑交换学习数据（PC 端 /api/sync 只存一份合并好的数据）。
 // 一次同步：拉取电脑上的 → 和本机的合并（规则见 syncMerge.ts）→ 写回本机 → 上传合并结果。
 // 上传时带着拉取时的版本号，期间别的设备同步过就会被拒绝，重新拉取再合并，两台设备同时同步也不会互相覆盖。
 // 不同步的：API Key、设置和界面偏好、学习包本身（每台设备自己从电脑下载）、小游戏里每台设备自己的每日上限和保底计数。
@@ -217,12 +217,12 @@ export function syncNow(): Promise<SyncStatus> {
     let status: SyncStatus;
     try {
       const base = await getPcUrl();
-      if (!base) throw new Error('还没有连接电脑：先在「设置」里填写电脑地址');
+      if (!base) throw new Error('还没有连接 PC 端：先在「设置」里填写 PC 端地址');
       const me = await deviceId();
       let changes = 0;
       for (let attempt = 0; ; attempt++) {
         const remote = await request<Remote>(`${base}/api/sync`, undefined, 15_000);
-        if (remote.status !== 200) throw new Error(`电脑返回错误（${remote.status}），电脑端可能需要更新`);
+        if (remote.status !== 200) throw new Error(`PC 端返回错误（${remote.status}），PC 端可能需要更新`);
         const local = await exportLocal(me);
         const merged = remote.body.doc?.format === 1 ? mergeDocs(local, remote.body.doc) : local;
         changes = await applyMerged(merged, me);
@@ -237,7 +237,7 @@ export function syncNow(): Promise<SyncStatus> {
       }
       status = { at: Date.now(), ok: true, message: changes ? `同步完成，更新了 ${changes} 项` : '同步完成，两边已经一致', changes };
     } catch (e) {
-      const msg = e instanceof Error ? (e.name === 'AbortError' ? '连接电脑超时' : e.message) : String(e);
+      const msg = e instanceof Error ? (e.name === 'AbortError' ? '连接 PC 端超时' : e.message) : String(e);
       status = { at: Date.now(), ok: false, message: msg, changes: 0 };
     }
     await kvSet('sync:status', status);

@@ -27,7 +27,10 @@ from pydantic import BaseModel
 from .config import load_config
 from .dictionary import ATTRIBUTION
 from .package import make_thumbnail
-from . import phone_dict, sync
+from . import phone_dict, settings, sync
+from . import config as _config
+from .config import LlmConfig
+from .llm import LlmError, chat_json, list_models
 from .download import expand_playlist, is_url
 from .pipeline import STAGES, Options, PackageExists, run
 
@@ -52,7 +55,11 @@ async def lan_read_only(request: Request, call_next):
     if client not in LOCAL_HOSTS and not (request.url.path == REMOTE_SYNC and request.method in ("GET", "PUT")):
         if request.method not in ("GET", "HEAD") or not REMOTE_ALLOWED.match(request.url.path):
             return JSONResponse({"detail": "其他设备只能读取学习包"}, status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    # 界面文件每次都向服务确认有没有更新（升级后窗口里不会还是旧界面）
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def lan_addresses() -> list[str]:
@@ -75,6 +82,63 @@ def lan_addresses() -> list[str]:
 @app.get("/api/ping")
 def ping() -> dict:
     return {"app": "nihongo-pc", "version": 1}
+
+
+# ---------- 设置（只有本机能访问，局域网的手机读不到） ----------
+
+@app.get("/api/settings")
+def get_settings() -> dict:
+    return settings.public()
+
+
+@app.put("/api/settings")
+async def put_settings(request: Request) -> dict:
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400, "设置格式不对")
+    return settings.update(body)
+
+
+def _llm_from(body: dict) -> LlmConfig:
+    """设置页「读取模型 / 测试」：用页面上刚填的值，没填 Key 就用已经保存的"""
+    saved = load_config().llm
+    key = str(body.get("api_key") or "").strip() or saved.key()
+    return LlmConfig(base_url=str(body.get("base_url") or saved.base_url).strip(), api_key=key, model=str(body.get("model") or saved.model).strip())
+
+
+@app.post("/api/settings/models")
+async def settings_models(request: Request) -> dict:
+    try:
+        ids = list_models(_llm_from(await request.json()))
+    except LlmError as e:
+        raise HTTPException(400, str(e)) from None
+    skip = re.compile(r"(embed|tts|asr|whisper|image|flux|stable-diffusion|sdxl|rerank|guard|bge-|gte-|t2v|t2i|i2v|wan2|audio|vector|upscal)", re.I)
+    return {"models": [m for m in ids if not skip.search(m)]}
+
+
+@app.post("/api/settings/test")
+async def settings_test(request: Request) -> dict:
+    cfg = _llm_from(await request.json())
+    started = time.time()
+    try:
+        chat_json(cfg, [{"role": "user", "content": '只返回 JSON：{"ok":true}'}], max_tokens=20)
+    except LlmError as e:
+        raise HTTPException(400, str(e)) from None
+    return {"seconds": round(time.time() - started, 1)}
+
+
+@app.post("/api/open-folder")
+async def open_folder(request: Request) -> dict:
+    """在资源管理器里打开学习库 / 配置文件所在的文件夹"""
+    import os
+    which = (await request.json()).get("which")
+    cfg = load_config()
+    target = {"library": cfg.library, "config": _config.CONFIG_PATH.parent}.get(which)
+    if target is None:
+        raise HTTPException(400, "不知道要打开哪个文件夹")
+    target.mkdir(parents=True, exist_ok=True)
+    os.startfile(target)  # type: ignore[attr-defined]  # 只在 Windows 上用
+    return {"ok": True}
 
 
 @app.get("/api/lan")
@@ -292,7 +356,7 @@ def translate_common() -> dict:
     """后台预翻译约 2.2 万个常用词条的中文释义（会花 API 费用，只在用户点按钮时运行）。"""
     cfg = load_config()
     if not (cfg.llm.key() and cfg.llm.model):
-        raise HTTPException(400, "没有配置 AI 接口（config.toml 的 [llm]）")
+        raise HTTPException(400, "还没有填 AI 的 API Key：请先在「设置」里填写")
     if _dict_job["running"]:
         return _dict_job
 

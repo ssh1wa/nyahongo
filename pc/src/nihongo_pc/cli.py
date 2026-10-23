@@ -93,6 +93,12 @@ def cmd_menu(_: argparse.Namespace) -> None:
             os.startfile(library)
 
 
+def cmd_app(args: argparse.Namespace) -> None:
+    from .desktop import run
+
+    run()
+
+
 def cmd_ui(args: argparse.Namespace) -> None:
     from .server import serve
 
@@ -123,7 +129,10 @@ def main() -> None:
     menu = sub.add_parser("menu", help="交互式菜单")
     menu.set_defaults(func=cmd_menu)
 
-    ui = sub.add_parser("ui", help="打开网页界面（启动.bat 用的就是这个）")
+    desk = sub.add_parser("app", help="打开 PC 端窗口（开始菜单、启动.bat 用的就是这个）")
+    desk.set_defaults(func=cmd_app)
+
+    ui = sub.add_parser("ui", help="在浏览器里打开网页界面（不开窗口；开发时用）")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     ui.add_argument("--lan", action="store_true", help="允许同一局域网的手机读取和下载学习包")

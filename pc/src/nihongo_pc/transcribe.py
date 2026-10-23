@@ -63,6 +63,14 @@ def _load_model(cfg: WhisperConfig):
 
 def _create_model(cfg: WhisperConfig):
     _register_cuda_dlls()
+    if cfg.hf_mirror:
+        # 国内网络：模型从镜像下载。huggingface_hub 在导入时读这个环境变量，已经导入过的话也改一下它的常量
+        import os
+        import sys
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+        if "huggingface_hub.constants" in sys.modules:
+            sys.modules["huggingface_hub.constants"].ENDPOINT = "https://hf-mirror.com"
+
     import ctranslate2
     from faster_whisper import WhisperModel
 

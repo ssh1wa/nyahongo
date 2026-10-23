@@ -80,7 +80,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
   // 英语学习包是测试版功能：没开就不显示
   const visible = <T extends { lang?: string }>(list: T[]) => list.filter((p) => prefs.beta || p.lang !== 'en');
   const localIds = new Map(local.map((p) => [p.id, p]));
-  // 电脑上新的、或者电脑端重新处理过（created_at 变了）的学习包
+  // 电脑上新的、或者 PC 端重新处理过（created_at 变了）的学习包
   const available = visible(remote ?? []).filter((m) => localIds.get(m.id)?.created_at !== m.created_at);
 
   return (
@@ -93,7 +93,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
       <ScreenHeader
         kicker="视频 · 播客"
         title="精听"
-        titleExtra={<IconButton label="电脑端教程" onPress={() => setGuide(true)}><CircleHelp size={20} color={c.muted} /></IconButton>}
+        titleExtra={<IconButton label="PC 端教程" onPress={() => setGuide(true)}><CircleHelp size={20} color={c.muted} /></IconButton>}
       />
 
       <SectionLabel>手机上的学习包</SectionLabel>
@@ -132,16 +132,16 @@ export function LibraryScreen({ active }: { active: boolean }) {
         <Card style={{ gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Laptop size={22} color={c.accent} />
-            <Text style={{ color: c.ink, flex: 1, lineHeight: 20 }}>学习包在电脑上制作：电脑端把视频变成逐句的日语字幕，手机连上电脑后下载。</Text>
+            <Text style={{ color: c.ink, flex: 1, lineHeight: 20 }}>学习包在电脑上制作：PC 端把视频变成逐句的日语字幕，手机连上电脑后下载。</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Button label="看教程" onPress={() => setGuide(true)} icon={<CircleHelp size={16} color={c.accentInk} />} style={{ flex: 1 }} />
-            <Button label="填电脑地址" kind="secondary" onPress={onGoSettings} style={{ flex: 1 }} />
+            <Button label="填 PC 端地址" kind="secondary" onPress={onGoSettings} style={{ flex: 1 }} />
           </View>
         </Card>
       ) : remoteError ? (
         <View style={{ gap: 8 }}>
-          <ErrorNote message={`连不上电脑（${pcUrl}）：${remoteError}\n确认电脑端开着，手机和电脑连的是同一个 Wi-Fi。`} />
+          <ErrorNote message={`连不上 PC 端（${pcUrl}）：${remoteError}\n确认 PC 端开着，手机和电脑连的是同一个 Wi-Fi。`} />
           <Button label="看连接教程" kind="secondary" small onPress={() => setGuide(true)} icon={<CircleHelp size={14} color={c.ink} />} />
         </View>
       ) : remote && !available.length ? (
@@ -158,7 +158,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
                   <Tag label={fmtDuration(m.duration)} />
                   <Tag label={`${m.size_mb ?? '?'} MB`} />
                   {m.lang === 'en' ? <Tag label="英语" tone="accent" /> : null}
-                  {update ? <Tag label="电脑端已更新" tone="accent" /> : null}
+                  {update ? <Tag label="PC 端已更新" tone="accent" /> : null}
                 </View>
                 {p !== undefined ? (
                   <View style={[styles.bar, { backgroundColor: c.surface2 }]}>

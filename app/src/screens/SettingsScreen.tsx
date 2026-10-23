@@ -538,7 +538,7 @@ function UsageSection() {
           </View>
         )))}
         {!provider.none ? (
-          <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>这是整个账户的数据，电脑端用同一个 Key 的消耗也算在内。DeepInfra 按月结算，数字可能比实际晚几分钟。</Text>
+          <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>这是整个账户的数据，PC 端用同一个 Key 的消耗也算在内。DeepInfra 按月结算，数字可能比实际晚几分钟。</Text>
         ) : null}
       </Card>
 
@@ -590,7 +590,7 @@ function UsageSection() {
             <Text style={{ color: c.muted, fontSize: 11 }}>今天 {daily[daily.length - 1]?.calls ?? 0} 次</Text>
           </View>
         </View>
-        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>调用统计是这个 App 发出的请求（同步过的其他设备也算在内），不含电脑端。</Text>
+        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>调用统计是这个 App 发出的请求（同步过的其他设备也算在内），不含 PC 端。</Text>
       </Card>
     </>
   );
@@ -632,7 +632,7 @@ function LearningSection() {
       </Card>
       <SectionLabel>测试版</SectionLabel>
       <Card style={{ gap: 12 }}>
-        <Row label="测试版功能" hint="英语模式：电脑端勾选「英语（测试版）」处理的视频会显示出来，中英双语字幕，点单词查英汉词典">
+        <Row label="测试版功能" hint="英语模式：PC 端勾选「英语（测试版）」处理的视频会显示出来，中英双语字幕，点单词查英汉词典">
           <Segmented options={[{ value: 'off', label: '关' }, { value: 'on', label: '开' }]} value={prefs.beta ? 'on' : 'off'} onChange={(v) => setPrefs({ beta: v === 'on' })} />
         </Row>
       </Card>
@@ -707,7 +707,7 @@ function AppearanceSection() {
   );
 }
 
-// ---------- 电脑同步 ----------
+// ---------- 连接 PC 端 ----------
 
 function PcSection() {
   const c = useColors();
@@ -720,7 +720,7 @@ function PcSection() {
     try {
       const url = await setPcUrl(pc);
       setPc(url);
-      setStatus((await pingPc(url)) ? { ok: true, text: '已连接电脑' } : { ok: false, text: '这个地址不是电脑端的学习库' });
+      setStatus((await pingPc(url)) ? { ok: true, text: '已连接 PC 端' } : { ok: false, text: '这个地址不是 PC 端的学习库' });
     } catch (e) {
       setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -729,13 +729,13 @@ function PcSection() {
   };
   return (
     <>
-      <SectionLabel>电脑同步</SectionLabel>
+      <SectionLabel>连接 PC 端</SectionLabel>
       <Card style={{ gap: 12 }}>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Laptop size={20} color={c.accent} />
-          <Text style={{ flex: 1, color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>电脑端网页右上角会显示「📱 手机同步」地址，填到下面。手机和电脑要连同一个 Wi-Fi。还没装电脑端，看「精听」页右上角问号里的教程。</Text>
+          <Text style={{ flex: 1, color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>PC 端窗口左下角会显示「手机连接地址」，填到下面。手机和电脑要连同一个 Wi-Fi。还没装 PC 端，看「精听」页右上角问号里的教程。</Text>
         </View>
-        <Field label="电脑地址" value={pc} onChange={setPc} placeholder="例如 192.168.1.5:8765" url />
+        <Field label="PC 端地址" value={pc} onChange={setPc} placeholder="例如 192.168.1.5:8765" url />
         <Button label="测试连接并保存" onPress={testPc} loading={testing} disabled={!pc.trim()} />
         {status ? <StatusLine ok={status.ok} text={status.text} /> : null}
       </Card>
@@ -797,7 +797,7 @@ function DictSection() {
 
   const download = async () => {
     const pc = await getPcUrl();
-    if (!pc) { setError('先在上面填好电脑地址'); return; }
+    if (!pc) { setError('先在上面填好 PC 端地址'); return; }
     setError(''); setProgress(0);
     abort.current = new AbortController();
     try {
@@ -840,7 +840,7 @@ function DictSection() {
           </View>
         )}
         {error ? <ErrorNote message={error} /> : null}
-        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>词典原本是英文释义。查到还没有中文的词条时，会让 AI 把它翻成中文并保存下来，下次就不用再翻。也可以在电脑端点「预翻译常用词」，一次翻好约 2.2 万个常用词（会花一些 AI 费用）。</Text>
+        <Text style={{ color: c.muted, fontSize: 11.5, lineHeight: 17 }}>词典原本是英文释义。查到还没有中文的词条时，会让 AI 把它翻成中文并保存下来，下次就不用再翻。也可以在 PC 端点「预翻译常用词」，一次翻好约 2.2 万个常用词（会花一些 AI 费用）。</Text>
       </Card>
     </>
   );

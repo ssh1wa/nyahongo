@@ -1,4 +1,4 @@
-// 第一次打开 App 的引导：选日语水平、说明要填 AI 的 Key、精听需要电脑端。只出现一次
+// 第一次打开 App 的引导：选日语水平、说明要填 AI 的 Key、精听需要 PC 端。只出现一次
 import { Headphones, KeyRound, Sparkles } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -56,9 +56,9 @@ export function Welcome() {
         </View>
 
         <View style={[styles.block, { backgroundColor: c.surface, borderColor: c.line }]}>
-          <View style={styles.row}><Headphones size={18} color={c.accent} /><Text style={[styles.h, { color: c.ink }]}>精听要配合电脑端（可选）</Text></View>
+          <View style={styles.row}><Headphones size={18} color={c.accent} /><Text style={[styles.h, { color: c.ink }]}>精听要配合 PC 端（可选）</Text></View>
           <Text style={[styles.p, { color: c.muted }]}>
-            想看视频、听播客逐句学，需要在电脑上装电脑端，把视频做成带字幕的学习包。教程在「精听」页右上角的问号里。不装也能用翻译、阅读、语法和生词本。
+            想看视频、听播客逐句学，需要在电脑上装 PC 端，把视频做成带字幕的学习包。教程在「精听」页右上角的问号里。不装也能用翻译、阅读、语法和生词本。
           </Text>
         </View>
 

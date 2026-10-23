@@ -34,10 +34,10 @@ async function fetchJson<T>(url: string, timeoutMs = 8000): Promise<T> {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) throw new Error(`电脑端返回错误 HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`PC 端返回错误 HTTP ${res.status}`);
     return (await res.json()) as T;
   } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') throw new Error('连接电脑超时：确认手机和电脑在同一个 Wi-Fi，且电脑端已经打开');
+    if (e instanceof Error && e.name === 'AbortError') throw new Error('连接电脑超时：确认手机和电脑在同一个 Wi-Fi，且 PC 端已经打开');
     throw e instanceof Error ? e : new Error(String(e));
   } finally {
     clearTimeout(timer);

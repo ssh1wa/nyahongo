@@ -29,6 +29,7 @@ class WhisperConfig:
     compute_type: str = "auto"  # auto：GPU 用 float16，CPU 用 int8
     beam_size: int = 5
     initial_prompt: str = ""  # 可填角色名、专有名词，帮助识别
+    hf_mirror: bool = False  # 模型从国内镜像 hf-mirror.com 下载
 
 
 @dataclass
@@ -64,10 +65,12 @@ class Config:
         packages = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages"
         for exe in packages.glob("Gyan.FFmpeg*/*/bin/ffmpeg.exe"):
             return str(exe)
-        raise RuntimeError("找不到 ffmpeg，请安装后重试，或在 config.toml 里填写 ffmpeg 路径")
+        raise RuntimeError("找不到 ffmpeg：重新打开一次 PC 端会自动安装，或者在「设置」里填写 ffmpeg.exe 的路径")
 
 
-def load_config(path: Path = CONFIG_PATH) -> Config:
+def load_config(path: Path | None = None) -> Config:
+    # 路径在调用时才取（测试会把 CONFIG_PATH 换成临时文件）
+    path = path or CONFIG_PATH
     cfg = Config()
     if not path.exists():
         return cfg

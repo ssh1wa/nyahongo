@@ -1,6 +1,10 @@
 // 语法课程：语法点来自 Hanabira 开源语法库（hanabira.org，署名后可免费使用），
 // AI 只负责按水平排课、写中文讲解、出例句和练习题，讲解以库里的原始说明为依据。
+// 课程安排、中文简述、828 课课文都已经预先生成好打包进 App（pc/tools/pregen_grammar.py），打开就能学；
+// 用户点「重新生成」才会调用 AI，结果存在本机，以本机的为准。
 import data from '../data/grammar.json';
+import bundledCourse from '../data/grammar/course.json';
+import bundledZh from '../data/grammar/zh.json';
 import { getDb, kvGet, kvSet } from './db';
 import { normalizeSegments } from './furigana';
 import { arr, num, requestJson, str } from './llm';
@@ -34,7 +38,9 @@ export const cleanTitle = (t: string) => t.replace(/\s*[（(][^）)]*[a-z][^）)
 
 export type Unit = { title: string; theme: string; ids: string[] };
 
-export const loadCourse = (level: GrammarLevel) => kvGet<Unit[] | null>(`course:${level}`, null);
+/** 课程：本机重新设计过就用本机的，否则用打包的 */
+export const loadCourse = async (level: GrammarLevel): Promise<Unit[] | null> =>
+  (await kvGet<Unit[] | null>(`course:${level}`, null)) ?? ((bundledCourse as Record<string, Unit[]>)[level] ?? null);
 
 /** 让 AI 把这一级的语法点排成循序渐进的单元。保证每个语法点都出现且只出现一次。 */
 export async function designCourse(level: GrammarLevel): Promise<Unit[]> {
@@ -72,7 +78,10 @@ export async function designCourse(level: GrammarLevel): Promise<Unit[]> {
 // ---------- 中文简述 ----------
 
 /** 每个语法点一句中文意思（库里只有英文），一次翻完一整级并缓存。 */
-export const loadZhMeanings = (level: GrammarLevel) => kvGet<Record<string, string>>(`grammarZh:${level}`, {});
+export const loadZhMeanings = async (level: GrammarLevel): Promise<Record<string, string>> => ({
+  ...((bundledZh as Record<string, Record<string, string>>)[level] ?? {}),
+  ...(await kvGet<Record<string, string>>(`grammarZh:${level}`, {})),
+});
 
 export async function translateMeanings(level: GrammarLevel): Promise<Record<string, string>> {
   const points = LIBRARY[level];
@@ -135,6 +144,27 @@ export type Lesson = {
   quiz: QuizItem[];
 };
 
+// 打包的课文按级别分文件，第一次用到这一级时才加载（文件比较大，不在启动时加载）
+const BUNDLED_LESSONS: Record<GrammarLevel, () => Record<string, Lesson>> = {
+  N5: () => require('../data/grammar/lessons_N5.json'),
+  N4: () => require('../data/grammar/lessons_N4.json'),
+  N3: () => require('../data/grammar/lessons_N3.json'),
+  N2: () => require('../data/grammar/lessons_N2.json'),
+  N1: () => require('../data/grammar/lessons_N1.json'),
+};
+
+function bundledLesson(id: string): Lesson | null {
+  const level = id.slice(0, 2) as GrammarLevel;
+  const l = BUNDLED_LESSONS[level]?.()[id];
+  if (!l) return null;
+  // 注音分段按 App 的规则再整理一遍（和 AI 实时生成的课文一样处理）
+  return {
+    ...l,
+    examples: l.examples.map((e) => ({ ...e, japanese: normalizeSegments(e.japanese) })),
+    quiz: l.quiz.map((q) => ({ ...q, question: normalizeSegments(q.question) })),
+  };
+}
+
 const RUBY = `Japanese sentences are arrays of segments {"text":"学校","reading":"がっこう"}; readings (hiragana) only on kanji-bearing segments, null elsewhere; split kanji from okurigana.`;
 
 export async function loadLesson(id: string, regenerate = false): Promise<Lesson> {
@@ -144,6 +174,8 @@ export async function loadLesson(id: string, regenerate = false): Promise<Lesson
     if (row?.lesson) {
       try { return JSON.parse(row.lesson) as Lesson; } catch {}
     }
+    const bundled = bundledLesson(id);
+    if (bundled) return bundled;
   }
   const p = getPoint(id);
   if (!p) throw new Error('找不到这个语法点');

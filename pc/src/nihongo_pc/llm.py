@@ -21,7 +21,7 @@ class LlmError(Exception):
 def _request(cfg: LlmConfig, path: str, body: dict | None = None, timeout: float = 90) -> dict:
     key = cfg.key()
     if not key:
-        raise LlmError("没有配置 API Key：请在 config.toml 的 [llm] 里填写 api_key")
+        raise LlmError("还没有填 AI 的 API Key：请在 PC 端的「设置」里填写")
     url = cfg.base_url.rstrip("/") + path
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -72,19 +72,25 @@ def chat_json(
     *,
     temperature: float = 0.3,
     max_tokens: int = 4096,
+    timeout: float = 90,
+    service_tier: str | None = None,
 ) -> dict | list:
     """发一次对话请求，要求模型返回 JSON。JSON 不合法时让模型修一次。"""
     if not cfg.model:
-        raise LlmError("没有配置模型：请在 config.toml 的 [llm] 里填写 model")
+        raise LlmError("还没有选 AI 模型：请在 PC 端的「设置」里选择")
 
     def call(msgs: list[dict], temp: float) -> str:
-        payload = _request(cfg, "/chat/completions", {
+        body = {
             "model": cfg.model,
             "messages": msgs,
             "temperature": temp,
             "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
-        })
+        }
+        # 批量任务可以用便宜但慢一点的档位（DeepInfra 的 flex）；不支持的服务会忽略这个字段
+        if service_tier:
+            body["service_tier"] = service_tier
+        payload = _request(cfg, "/chat/completions", body, timeout=timeout)
         choice = (payload.get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content")
         if choice.get("finish_reason") == "length":

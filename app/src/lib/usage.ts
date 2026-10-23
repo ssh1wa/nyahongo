@@ -59,7 +59,7 @@ export type ProviderModelCost = { model: string; input: number; output: number; 
 export type DeepInfraMonth = { period: string; usd: number; models: ProviderModelCost[] };
 
 /**
- * DeepInfra 本月账单（整个账户，电脑端用同一个 Key 的消耗也算在内）。
+ * DeepInfra 本月账单（整个账户，PC 端用同一个 Key 的消耗也算在内）。
  * 接口返回的 rate / cost 单位是美分。
  */
 export async function deepinfraMonth(key: string): Promise<DeepInfraMonth> {

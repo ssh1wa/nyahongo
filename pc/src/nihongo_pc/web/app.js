@@ -82,14 +82,47 @@ const NON_WORD = new Set(["補助記号", "記号", "空白"]);
   });
 })();
 
-// 顶栏显示手机同步地址
+// 侧边栏底部显示手机同步地址
+let lanInfo = null;
 api("/api/lan").then((lan) => {
+  lanInfo = lan;
   if (!lan.enabled || !lan.urls.length) return;
-  const chip = $("#lan-chip");
-  chip.textContent = `📱 手机同步：${lan.urls[0].replace("http://", "")}`;
-  chip.title = `在手机 App 的设置里填写这个地址\n${lan.urls.join("\n")}`;
-  chip.hidden = false;
+  const el = $("#side-lan");
+  el.innerHTML = `<span>手机连接地址</span><strong>${esc(lan.urls[0].replace("http://", ""))}</strong>`;
+  el.title = "在手机 App 的「设置 → 同步与词典」里填写这个地址";
+  el.hidden = false;
 }).catch(() => {});
+
+// 侧边栏：当前页高亮、处理中的任务、学习包数量、没填 Key 的提醒（每页都显示，定时刷新）
+function markNav(name) {
+  document.querySelectorAll(".nav-item").forEach((a) => a.classList.toggle("active", a.dataset.nav === name));
+}
+const finishedSeen = new Set();
+let firstSidebarPoll = true;
+async function pollSidebar() {
+  try {
+    const [jobs, lib, s] = await Promise.all([api("/api/jobs"), api("/api/library"), api("/api/settings")]);
+    const active = jobs.jobs.filter((j) => j.status === "queued" || j.status === "running");
+    const running = jobs.jobs.find((j) => j.status === "running");
+    $("#badge-add").textContent = active.length ? String(active.length) : "";
+    $("#badge-library").textContent = lib.length ? String(lib.length) : "";
+    $("#badge-settings").className = `nav-badge${s.llm.has_key && s.llm.model ? "" : " dot"}`;
+    $("#side-jobs").innerHTML = running ? `
+      <a class="side-job" href="#/">
+        <span class="spinner"></span>
+        <span><strong>正在处理</strong>${esc(running.display)}</span>
+      </a>` : "";
+    for (const j of jobs.jobs) {
+      if (j.status === "done" && !finishedSeen.has(j.id)) {
+        finishedSeen.add(j.id);
+        if (!firstSidebarPoll) toast(`「${j.display}」处理好了，在学习库里`);
+      }
+    }
+    firstSidebarPoll = false;
+  } catch {}
+}
+pollSidebar();
+setInterval(pollSidebar, 2500);
 
 // ---------- 路由 ----------
 let cleanup = () => {};
@@ -97,7 +130,13 @@ function route() {
   cleanup();
   cleanup = () => {};
   const m = location.hash.match(/^#\/play\/([\w-]+)/);
+  const page = m ? "library" : location.hash.replace(/^#\/?/, "").split("/")[0] || "add";
+  markNav(page);
+  app.scrollTop = 0;
   if (m) renderPlayer(m[1]);
+  else if (page === "settings") renderSettings();
+  else if (page === "library") renderLibraryPage();
+  else if (page === "phone") renderPhone();
   else renderLibrary();
 }
 window.addEventListener("hashchange", route);
@@ -106,15 +145,17 @@ window.addEventListener("hashchange", route);
 const uploads = new Map(); // 正在上传的本地文件（还没变成任务）
 
 function renderLibrary() {
-  document.title = "にゃほんご 电脑端";
-  app.className = "";
+  document.title = "にゃほんご PC 端";
+  app.className = "page";
   app.innerHTML = `
+    <header class="page-head">
+      <div><h1>导入</h1><p>粘贴视频或播客的链接，或者把本地文件拖进窗口。处理好就能在手机上逐句精听。</p></div>
+    </header>
     <section class="hero">
-      <h1>今天想看点什么？</h1>
-      <p>粘贴视频或播客链接，或者把本地文件拖进窗口。处理完成后就能逐句精听。</p>
+      <div id="setup-banner"></div>
       <div class="add-panel">
         <form class="add-row" id="add-form">
-          <textarea class="url-input" id="url" rows="1" placeholder="粘贴 B 站 / YouTube / niconico 链接，一次可以粘贴多行…" autocomplete="off"></textarea>
+          <textarea class="url-input" id="url" rows="1" placeholder="粘贴视频或播客的链接，一次可以粘贴多行…" autocomplete="off"></textarea>
           <button class="btn primary" type="submit">开始处理</button>
         </form>
         <div class="add-options">
@@ -124,14 +165,17 @@ function renderLibrary() {
             <label class="switch" title="测试版：英语视频做成中英双语字幕，点单词查英汉词典（不逐词拆解）"><input type="checkbox" id="lang-en"><span class="track"></span>英语（测试版）</label>
           </div>
           <span class="hint">也可以 <button class="link-btn" id="pick-file" type="button">选择本地文件（可多选）</button> 或直接拖进窗口</span>
+        </div>
+        <div class="sites">
+          <strong>支持的网站</strong>
+          视频：B 站、YouTube、niconico、TVer、ABEMA 等 ·
+          播客 / 广播：Apple Podcasts、Voicy、NHK らじる★らじる、radiko、SoundCloud、喜马拉雅、播客的 RSS 地址 ·
+          不支持 Spotify（有加密）
           <input type="file" id="file-input" accept="video/*,audio/*,.mkv" multiple hidden>
         </div>
       </div>
     </section>
-    <div id="jobs-wrap"></div>
-    <div id="dict-card"></div>
-    <div class="section-title"><h2>学习库</h2><span id="lib-count"></span></div>
-    <div id="library"></div>`;
+    <div id="jobs-wrap"><div class="empty-hint">处理中的任务会显示在这里。一个视频一般几分钟，处理好会通知你。</div></div>`;
 
   const audioOnly = $("#audio-only");
   audioOnly.checked = store.get("audioOnly", false);
@@ -173,12 +217,10 @@ function renderLibrary() {
     e.target.value = "";
   });
 
-  loadLibrary();
   refreshJobs();
-  loadDictCard();
+  refreshSetupBanner();
   const timer = setInterval(refreshJobs, 1000);
-  const dictTimer = setInterval(() => { if (dictTranslating) loadDictCard(); }, 3000);
-  cleanup = () => { clearInterval(timer); clearInterval(dictTimer); };
+  cleanup = () => { clearInterval(timer); };
 }
 
 // ---------- 手机离线词典 ----------
@@ -215,9 +257,9 @@ async function loadLibrary() {
   if (!box) return;
   let items;
   try { items = await api("/api/library"); } catch (err) { box.innerHTML = `<div class="empty">读取失败：${esc(err.message)}</div>`; return; }
-  $("#lib-count").textContent = items.length ? `${items.length} 个学习包` : "";
+  $("#lib-count").textContent = items.length ? `${items.length} 个学习包 · 手机连上 PC 端后在「精听」页下载` : "";
   if (!items.length) {
-    box.innerHTML = `<div class="empty"><div class="big" lang="ja">空</div>还没有学习包，先在上面导入一个视频吧。</div>`;
+    box.innerHTML = `<div class="empty"><div class="big" lang="ja">空</div>还没有学习包。<br><a class="btn primary" href="#/">去导入一个视频</a></div>`;
     return;
   }
   box.innerHTML = `<div class="grid">${items.map(cardHtml).join("")}</div>`;
@@ -227,8 +269,8 @@ async function loadLibrary() {
     const item = items.find((x) => x.id === btn.dataset.redo);
     try {
       await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: item.source_url, audio_only: item.media_type === "audio", overwrite: true, lang: item.lang || "ja" }) });
-      toast("已加入队列：已下载的视频和转写结果会直接复用");
-      refreshJobs();
+      toast("已加入处理队列：已下载的视频和转写结果会直接复用");
+      pollSidebar();
     } catch (err) { toast(err.message); }
   }));
   box.querySelectorAll(".card-delete[data-id]").forEach((btn) => btn.addEventListener("click", async (e) => {
@@ -273,10 +315,10 @@ async function refreshJobs() {
   for (const j of data.jobs) {
     if (j.status === "done" && !seenDone.has(j.id)) { seenDone.add(j.id); finishedNow = true; }
   }
-  if (finishedNow) loadLibrary();
+  if (finishedNow) pollSidebar();
 
   const rows = [...uploads.values()].map(uploadHtml).concat(data.jobs.map(jobHtml));
-  if (!rows.length) { wrap.innerHTML = ""; return; }
+  if (!rows.length) { wrap.innerHTML = '<div class="empty-hint">处理中的任务会显示在这里。一个视频一般几分钟，处理好会通知你。</div>'; return; }
   const active = data.jobs.filter((j) => j.status === "queued" || j.status === "running").length + uploads.size;
   wrap.innerHTML = `
     <div class="section-title"><h2>处理队列</h2><span>${active ? `${active} 个进行中` : "全部完成"}</span></div>
@@ -388,7 +430,7 @@ function pumpUploads() {
     overlay.classList.remove("show");
     const files = [...e.dataTransfer.files].filter((f) => /^(video|audio)\//.test(f.type) || /\.(mkv|flv|ts)$/i.test(f.name));
     if (!files.length) return toast("只支持视频或音频文件");
-    if (location.hash.startsWith("#/play")) location.hash = "#/";
+    if (!location.hash.startsWith("#/") || location.hash.startsWith("#/play") || location.hash.startsWith("#/library")) location.hash = "#/";
     files.forEach(uploadFile);
   });
 })();
@@ -410,7 +452,7 @@ async function renderPlayer(id) {
   app.innerHTML = '<div class="empty">加载中…</div>';
   let data;
   try { data = await api(`/api/library/${id}`); } catch (err) {
-    app.innerHTML = `<div class="empty">打不开这个学习包：${esc(err.message)}<br><br><a class="btn" href="#/">返回学习库</a></div>`;
+    app.innerHTML = `<div class="empty">打不开这个学习包：${esc(err.message)}<br><br><a class="btn" href="#/library">返回学习库</a></div>`;
     return;
   }
   const { meta, subtitles, dictionary = {}, attribution = "" } = data;
@@ -421,7 +463,7 @@ async function renderPlayer(id) {
 
   app.innerHTML = `
     <div class="player-head">
-      <a class="icon-btn" href="#/" title="返回学习库">${ICONS.back}</a>
+      <a class="icon-btn" href="#/library" title="返回学习库">${ICONS.back}</a>
       <h1 title="${esc(meta.title)}">${esc(meta.title)}</h1>
     </div>
     <div class="player-layout">
@@ -710,3 +752,205 @@ async function renderPlayer(id) {
 }
 
 route();
+
+// ---------- 设置 ----------
+const SETTINGS_ICON = '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5A3.5 3.5 0 1 1 13 8.5a3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
+
+async function renderSettings() {
+  document.title = "设置 · にゃほんご PC 端";
+  app.className = "page settings-page";
+  app.innerHTML = '<div class="empty">读取设置中…</div>';
+  let s;
+  try { s = await api("/api/settings"); } catch (err) { app.innerHTML = `<div class="empty">读取设置失败：${esc(err.message)}</div>`; return; }
+
+  const provider = s.providers.find((p) => p.url.replace(/\/+$/, "") === s.llm.base_url.replace(/\/+$/, ""));
+  app.innerHTML = `
+    <header class="page-head"><div><h1>设置</h1><p>改完自动保存，马上生效。</p></div></header>
+
+    <section class="set-card">
+      <h2>AI 服务</h2>
+      <p class="set-hint">AI 用来校对字幕、加上整句中文翻译、给词典补中文释义。不填也能处理视频，只是字幕没有中文翻译，识别错的字也不会被纠正。用和手机 App 同一家就行。</p>
+      <div class="field"><label>服务商</label>
+        <div class="chips" id="providers">
+          ${s.providers.map((p) => `<button type="button" class="chip${provider?.id === p.id ? " on" : ""}" data-url="${esc(p.url)}" data-site="${esc(p.site)}">${esc(p.name)}</button>`).join("")}
+          <button type="button" class="chip${provider ? "" : " on"}" data-url="">其他</button>
+        </div>
+        <div class="set-hint" id="provider-hint">${provider ? `在 ${esc(provider.site)} 注册并创建 API Key，复制到下面。` : ""}</div>
+        <input class="text-input" id="base-url" value="${esc(s.llm.base_url)}" placeholder="https://…/v1（兼容 OpenAI 格式的接口地址）" ${provider ? "hidden" : ""}>
+      </div>
+      <div class="field"><label>API Key</label>
+        <input class="text-input" id="api-key" type="password" autocomplete="off"
+          placeholder="${s.llm.has_key ? (s.llm.from_env ? "已从环境变量读取" : `已填写（末尾 ${esc(s.llm.key_tail)}），要换的话直接粘贴新的`) : "粘贴在服务商官网创建的 Key"}">
+        <div class="set-hint">只保存在这台电脑的 config.toml 里。</div>
+      </div>
+      <div class="field"><label>模型</label>
+        <div class="row">
+          <input class="text-input" id="model" list="model-list" value="${esc(s.llm.model)}" placeholder="点「读取模型列表」再选，或者直接输入">
+          <datalist id="model-list"></datalist>
+          <button class="btn small" id="load-models" type="button">读取模型列表</button>
+          <button class="btn small" id="test-llm" type="button">测试</button>
+        </div>
+        <div class="set-hint" id="llm-status">不知道选哪个：名字里带 DeepSeek 或 Qwen 的较新版本，中文好、价格便宜。</div>
+      </div>
+    </section>
+
+    <section class="set-card">
+      <h2>下载</h2>
+      <div class="field"><label>代理</label>
+        <input class="text-input" id="proxy" value="${esc(s.download.proxy)}" placeholder="例如 http://127.0.0.1:7890，不用代理就留空">
+        <div class="set-hint">国内网络下载 YouTube、niconico 要用代理。只对这些网站生效：<span id="proxy-domains">${esc(s.download.proxy_domains.join("、"))}</span></div>
+      </div>
+      <div class="field"><label>需要登录才能看的视频</label>
+        <select class="text-input" id="cookies">
+          ${[["", "不读取（一般不需要）"], ["edge", "读取 Edge 的登录状态"], ["chrome", "读取 Chrome 的登录状态"], ["firefox", "读取 Firefox 的登录状态"]]
+            .map(([v, t]) => `<option value="${v}"${s.download.cookies_from_browser === v ? " selected" : ""}>${t}</option>`).join("")}
+        </select>
+        <div class="set-hint">会员视频、年龄限制的视频要先在这个浏览器里登录网站。</div>
+      </div>
+      <div class="field"><label>最高画质</label>
+        <select class="text-input" id="max-height">
+          ${[480, 720, 1080].map((h) => `<option value="${h}"${s.download.max_height === h ? " selected" : ""}>${h}p${h === 720 ? "（推荐，手机上看够了）" : ""}</option>`).join("")}
+        </select>
+      </div>
+    </section>
+
+    <section class="set-card">
+      <h2>语音识别</h2>
+      <div class="field"><label>识别模型</label>
+        <select class="text-input" id="whisper-model">
+          ${s.whisper_models.map((m) => `<option value="${esc(m.id)}"${s.whisper.model === m.id ? " selected" : ""}>${esc(m.name)}</option>`).join("")}
+          ${s.whisper_models.some((m) => m.id === s.whisper.model) ? "" : `<option value="${esc(s.whisper.model)}" selected>${esc(s.whisper.model)}</option>`}
+        </select>
+        <div class="set-hint">第一次处理视频时下载模型。视频自带日语字幕时直接用字幕，不需要识别。</div>
+      </div>
+      <div class="field">
+        <label class="switch"><input type="checkbox" id="hf-mirror"${s.whisper.hf_mirror ? " checked" : ""}><span class="track"></span>国内网络：模型从国内镜像（hf-mirror.com）下载</label>
+      </div>
+      <div class="field"><label>角色名、专有名词（可选）</label>
+        <input class="text-input" id="initial-prompt" value="${esc(s.whisper.initial_prompt)}" placeholder="例如：田中さん 山田先生 東京タワー">
+        <div class="set-hint">动画里的人名、地名识别不准时填在这里，用空格隔开。</div>
+      </div>
+    </section>
+
+    <section class="set-card">
+      <h2>文件</h2>
+      <div class="row">
+        <button class="btn small" data-open="library" type="button">打开学习库文件夹</button>
+        <button class="btn small" data-open="config" type="button">打开设置文件所在文件夹</button>
+      </div>
+      <div class="set-hint">学习库：${esc(s.paths.library_abs)}</div>
+    </section>`;
+
+  // 改了就保存
+  const save = async (patch, msg = "已保存") => {
+    try { s = await api("/api/settings", { method: "PUT", body: JSON.stringify(patch) }); toast(msg); refreshSetupBanner(); }
+    catch (err) { toast(`保存失败：${err.message}`); }
+  };
+  const llmBody = () => ({ base_url: $("#base-url").value.trim(), api_key: $("#api-key").value.trim(), model: $("#model").value.trim() });
+
+  app.querySelectorAll("#providers .chip").forEach((b) => b.addEventListener("click", () => {
+    app.querySelectorAll("#providers .chip").forEach((x) => x.classList.toggle("on", x === b));
+    const custom = !b.dataset.url;
+    $("#base-url").hidden = !custom;
+    $("#provider-hint").textContent = custom ? "填写兼容 OpenAI 格式的接口地址，一般以 /v1 结尾。" : `在 ${b.dataset.site} 注册并创建 API Key，复制到下面。`;
+    if (!custom) { $("#base-url").value = b.dataset.url; save({ llm: { base_url: b.dataset.url } }); }
+    else $("#base-url").focus();
+  }));
+  $("#base-url").addEventListener("change", () => save({ llm: { base_url: $("#base-url").value.trim() } }));
+  $("#api-key").addEventListener("change", async () => {
+    const key = $("#api-key").value.trim();
+    if (!key) return;
+    await save({ llm: { api_key: key } }, "API Key 已保存");
+    $("#api-key").value = "";
+    $("#api-key").placeholder = `已填写（末尾 ${key.slice(-4)}），要换的话直接粘贴新的`;
+  });
+  $("#model").addEventListener("change", () => save({ llm: { model: $("#model").value.trim() } }));
+  const status = (t, ok) => { const el = $("#llm-status"); el.textContent = t; el.className = `set-hint ${ok === true ? "ok" : ok === false ? "err" : ""}`; };
+  $("#load-models").addEventListener("click", async (e) => {
+    e.target.disabled = true; status("正在读取…");
+    try {
+      const r = await api("/api/settings/models", { method: "POST", body: JSON.stringify(llmBody()) });
+      $("#model-list").innerHTML = r.models.map((m) => `<option value="${esc(m)}">`).join("");
+      status(`这家有 ${r.models.length} 个模型可选，点模型输入框选择。`, true);
+      $("#model").focus();
+    } catch (err) { status(err.message, false); }
+    finally { e.target.disabled = false; }
+  });
+  $("#test-llm").addEventListener("click", async (e) => {
+    e.target.disabled = true; status("正在测试…");
+    try {
+      const r = await api("/api/settings/test", { method: "POST", body: JSON.stringify(llmBody()) });
+      status(`能用 · 回复用了 ${r.seconds} 秒`, true);
+    } catch (err) { status(err.message, false); }
+    finally { e.target.disabled = false; }
+  });
+
+  $("#proxy").addEventListener("change", () => save({ download: { proxy: $("#proxy").value.trim() } }));
+  $("#cookies").addEventListener("change", () => save({ download: { cookies_from_browser: $("#cookies").value } }));
+  $("#max-height").addEventListener("change", () => save({ download: { max_height: Number($("#max-height").value) } }));
+  $("#whisper-model").addEventListener("change", () => save({ whisper: { model: $("#whisper-model").value } }));
+  $("#hf-mirror").addEventListener("change", () => save({ whisper: { hf_mirror: $("#hf-mirror").checked } }));
+  $("#initial-prompt").addEventListener("change", () => save({ whisper: { initial_prompt: $("#initial-prompt").value.trim() } }));
+  app.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () =>
+    api("/api/open-folder", { method: "POST", body: JSON.stringify({ which: b.dataset.open }) }).catch((err) => toast(err.message))));
+}
+
+// 还没填 AI Key 时，学习库上面提示一下
+async function refreshSetupBanner() {
+  const box = $("#setup-banner");
+  if (!box) return;
+  try {
+    const s = await api("/api/settings");
+    box.innerHTML = s.llm.has_key && s.llm.model ? "" : `
+      <div class="setup-banner">
+        <div><strong>还没填 AI 的 API Key</strong><br><span>不填也能处理视频，只是字幕没有中文翻译。填一次就好。</span></div>
+        <a class="btn small primary" href="#/settings">去设置</a>
+      </div>`;
+  } catch { box.innerHTML = ""; }
+}
+
+// ---------- 学习库页 ----------
+function renderLibraryPage() {
+  document.title = "学习库 · にゃほんご PC 端";
+  app.className = "page";
+  app.innerHTML = `
+    <header class="page-head">
+      <div><h1>学习库</h1><p id="lib-count"></p></div>
+      <a class="btn primary" href="#/">导入新的</a>
+    </header>
+    <div id="library"></div>`;
+  loadLibrary();
+}
+
+// ---------- 手机页 ----------
+function renderPhone() {
+  document.title = "手机 · にゃほんご PC 端";
+  app.className = "page";
+  const url = lanInfo?.urls?.[0]?.replace("http://", "");
+  app.innerHTML = `
+    <header class="page-head"><div><h1>连接手机</h1><p>手机和这台电脑连同一个 Wi-Fi，就能下载学习包、同步学习进度。</p></div></header>
+    <section class="phone-hero">
+      <div class="phone-addr">
+        <span>手机连接地址</span>
+        <strong id="phone-url">${url ? esc(url) : "读取中…"}</strong>
+        <button class="btn small" id="copy-url" type="button">复制</button>
+      </div>
+      <ol class="steps">
+        <li><b>装手机 App</b>在 <a href="https://github.com/ssh1wa/nyahongo/releases" target="_blank">GitHub Releases</a> 下载 nyahongo.apk 装到安卓手机上</li>
+        <li><b>填地址</b>App 右上角「设置 → 同步与词典 → PC 端地址」填上面的地址，点「测试连接并保存」</li>
+        <li><b>下载学习包</b>回到 App 的「精听」页，下拉刷新，点「下载」</li>
+      </ol>
+      <p class="set-hint">连不上的话：第一次打开 PC 端时 Windows 会问是否允许网络访问，要选「允许」。点错了在「Windows 安全中心 → 防火墙 → 允许应用通过防火墙」里把 Python 勾上。</p>
+    </section>
+    <div class="section-title"><h2>多设备同步</h2></div>
+    <div class="set-card"><p class="set-hint" style="margin:0">手机、平板都填同一个地址，生词本和复习进度、阅读和翻译记录、语法进度、精听学到哪一句、猫に小判会通过这台电脑自动合并。同步数据保存在 PC 端文件夹的 sync 里，会保留最近 30 个旧版本。</p></div>
+    <div class="section-title"><h2>手机离线词典</h2></div>
+    <div id="dict-card"></div>`;
+  $("#copy-url").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("#phone-url").textContent); toast("已复制"); } catch { toast("复制失败，手动选中复制吧"); }
+  });
+  if (!url) api("/api/lan").then((lan) => { lanInfo = lan; $("#phone-url").textContent = lan.urls[0]?.replace("http://", "") ?? "没有找到局域网地址"; }).catch(() => {});
+  loadDictCard();
+  const dictTimer = setInterval(() => { if (dictTranslating) loadDictCard(); }, 3000);
+  cleanup = () => clearInterval(dictTimer);
+}
