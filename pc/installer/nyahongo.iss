@@ -19,6 +19,8 @@ DefaultDirName={autopf}\Nyahongo
 DefaultGroupName={#AppName}
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
+; 0.2 叫「电脑端」：升级时不沿用旧的开始菜单文件夹名
+UsePreviousGroup=no
 OutputDir=Output
 OutputBaseFilename=nyahongo-pc-setup-{#AppVersion}
 SetupIconFile=nyahongo.ico
@@ -55,6 +57,8 @@ Source: "nyahongo.ico"; DestDir: "{app}"; Flags: ignoreversion
 [InstallDelete]
 ; 旧版（0.2）用的启动方式留下的文件
 Type: files; Name: "{app}\use-mirror.txt"
+Type: filesandordirs; Name: "{userprograms}\にゃほんご 电脑端"
+Type: files; Name: "{userdesktop}\にゃほんご 电脑端.lnk"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\launch.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\nyahongo.ico"; AppUserModelID: "{#AppId}"
