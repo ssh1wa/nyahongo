@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import english
+from . import glossary as glossary_mod
 from .config import Config
 from .dictionary import Dictionary, entry_for_package
 from .download import download, is_url, parse_vtt
@@ -45,6 +46,8 @@ class Options:
     refine: bool = True  # 配置了 AI 接口时做校对、翻译和读音检查
     title: str | None = None  # 本地文件可以指定标题
     lang: str = "ja"  # ja / en（英语模式，测试版：双语字幕 + 点词查词，不逐词拆解）
+    work: str | None = None  # 作品名：先准备角色名等专有名词，校对和注音更准
+    terms: str | None = None  # 手动补充的专有名词，空格隔开，括号里可以写读音：唯（ゆい） 桜が丘
 
 
 @dataclass
@@ -63,16 +66,17 @@ def _print_progress(stage: int, fraction: float | None, detail: str) -> None:
         print()
 
 
-def _refine_text_cached(cfg: Config, pkg_id: str, sentences: list[dict], on_progress) -> list[dict]:
-    """AI 校对结果按"原文 + 模型"缓存，重新打包时不重复花钱。"""
+def _refine_text_cached(cfg: Config, pkg_id: str, sentences: list[dict], on_progress,
+                        terms: list[str] | None = None) -> list[dict]:
+    """AI 校对结果按"原文 + 模型 + 专有名词"缓存，重新打包时不重复花钱。"""
     digest = hashlib.sha1(
-        ("\n".join(s["text"] for s in sentences) + cfg.llm.model).encode("utf-8")
+        ("\n".join(s["text"] for s in sentences) + cfg.llm.model + "|".join(terms or [])).encode("utf-8")
     ).hexdigest()[:12]
     cache = cfg.workspace / "refined" / f"{pkg_id}.{digest}.json"
     if cache.exists():
         on_progress(1)
         return json.loads(cache.read_text(encoding="utf-8"))
-    refined = refine_text(sentences, cfg.llm, on_progress)
+    refined = refine_text(sentences, cfg.llm, on_progress, terms)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(refined, ensure_ascii=False), encoding="utf-8")
     return refined
@@ -143,6 +147,17 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         raise PackageExists(pkg_dir.name)
     pkg_dir.mkdir(parents=True, exist_ok=True)
 
+    names = None
+    if not en:
+        if opts.work and opts.work.strip():
+            progress(1, None, "准备专有名词")
+            names = glossary_mod.build(cfg, opts.work, notice)
+            if not names and not opts.terms:
+                notice(f"没找到「{opts.work.strip()}」的角色名等资料，按普通方式处理")
+        names = glossary_mod.merge(names, glossary_mod.parse_manual(opts.terms or ""))
+        if names:
+            notice(glossary_mod.summary(names))
+
     if sub and not opts.force_whisper and not en:  # 网站字幕只下载了日语的
         progress(1, 1, "使用网站提供的人工日语字幕")
         sentences, sub_source, model = parse_vtt(sub), "manual", None
@@ -172,7 +187,8 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         progress(2, 1, f"翻译了 {sum(1 for s in sentences if s.get('zh'))} 句")
     elif use_llm:
         sentences = _refine_text_cached(cfg, pkg_dir.name, sentences,
-                                        lambda f: progress(2, f, "加标点、校对错字、整句翻译"))
+                                        lambda f: progress(2, f, "加标点、校对错字、整句翻译"),
+                                        glossary_mod.for_prompt(names))
         refined_by = cfg.llm.model
         progress(2, 1, f"校对了 {sum(1 for s in sentences if 'original' in s)} 句")
     else:
@@ -186,8 +202,10 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
     else:
         for s in sentences:
             s["tokens"] = tokenize(s["text"])
+        glossary_mod.apply_readings(sentences, names)
         if use_llm:
-            fixed = refine_readings(sentences, cfg.llm, lambda f: progress(3, f * 0.4, "AI 检查读音"))
+            fixed = refine_readings(sentences, cfg.llm, lambda f: progress(3, f * 0.4, "AI 检查读音"),
+                                    glossary_mod.for_prompt(names))
             progress(3, 0.4, f"修正了 {fixed} 处读音")
         dictionary = _attach_dictionary(cfg, sentences, use_llm, lambda f, msg: progress(3, 0.4 + f * 0.6, msg))
     subtitles = build_subtitles(sentences, sub_source)
@@ -205,7 +223,8 @@ def run(source: str, cfg: Config, opts: Options, progress: ProgressFn = _print_p
         make_thumbnail(packed, pkg_dir, cfg.ffmpeg_path())
     write_package(pkg_dir, media=packed, title=title, source_url=url,
                   subtitles=subtitles, whisper_model=model,
-                  dictionary=dictionary, refined_by=refined_by, lang=opts.lang)
+                  dictionary=dictionary, refined_by=refined_by, lang=opts.lang,
+                  work=(opts.work or "").strip() or None, terms=(opts.terms or "").strip() or None)
     progress(4, 1, "完成")
 
     size = sum(f.stat().st_size for f in pkg_dir.iterdir()) / 1024 / 1024

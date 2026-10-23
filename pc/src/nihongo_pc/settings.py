@@ -90,7 +90,6 @@ def write(cfg: Config, path: Path | None = None) -> None:
         f"device = {_toml(w.device)}                 # auto / cuda / cpu",
         f"compute_type = {_toml(w.compute_type)}",
         f"beam_size = {_toml(w.beam_size)}",
-        f"initial_prompt = {_toml(w.initial_prompt)} # 角色名、专有名词，提高识别准确率",
         f"hf_mirror = {_toml(w.hf_mirror)}           # 模型从国内镜像 hf-mirror.com 下载",
         "",
         "[llm]",
@@ -127,7 +126,7 @@ def update(patch: dict) -> dict:
     if isinstance(dl.get("max_height"), int) and 144 <= dl["max_height"] <= 2160:
         cfg.download.max_height = dl["max_height"]
     wh = patch.get("whisper") or {}
-    for k in ("model", "device", "initial_prompt"):
+    for k in ("model", "device"):
         if isinstance(wh.get(k), str):
             setattr(cfg.whisper, k, wh[k].strip())
     if isinstance(wh.get("hf_mirror"), bool):

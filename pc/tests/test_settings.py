@@ -24,16 +24,16 @@ def phone():
 
 def test_save_and_read_back(cfg_file, local):
     r = local.put("/api/settings", json={
-        "llm": {"base_url": "https://api.deepseek.com", "api_key": "sk-test-1234567890abcd", "model": "deepseek-chat"},
+        "llm": {"base_url": "https://api.deepseek.com", "api_key": "sk-test-1234567890abcd", "model": "my \"model\""},
         "download": {"proxy": "http://127.0.0.1:7890", "cookies_from_browser": "edge", "max_height": 1080},
-        "whisper": {"model": "medium", "hf_mirror": True, "initial_prompt": "田中さん \"引号\""},
+        "whisper": {"model": "medium", "hf_mirror": True},
     })
     assert r.status_code == 200
     c = config.load_config(cfg_file)
     assert c.llm.base_url == "https://api.deepseek.com" and c.llm.api_key == "sk-test-1234567890abcd"
     assert c.download.proxy == "http://127.0.0.1:7890" and c.download.max_height == 1080
     assert c.whisper.model == "medium" and c.whisper.hf_mirror is True
-    assert c.whisper.initial_prompt == '田中さん "引号"'
+    assert c.llm.model == 'my "model"'  # 引号要正确转义
 
 
 def test_key_is_never_sent_to_the_page(cfg_file, local):

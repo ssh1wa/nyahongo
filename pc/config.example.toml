@@ -20,7 +20,6 @@ model = "large-v3"        # 也可以用 "kotoba-tech/kotoba-whisper-v2.0-faster
 device = "auto"           # auto / cuda / cpu
 compute_type = "auto"
 beam_size = 5
-initial_prompt = ""       # 角色名、专有名词，提高识别准确率
 hf_mirror = false         # 模型从国内镜像 hf-mirror.com 下载
 
 [llm]

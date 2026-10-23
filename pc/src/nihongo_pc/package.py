@@ -128,6 +128,8 @@ def write_package(
     dictionary: dict | None = None,
     refined_by: str | None = None,
     lang: str = "ja",
+    work: str | None = None,
+    terms: str | None = None,
 ) -> None:
     meta = {
         "version": FORMAT_VERSION,
@@ -143,6 +145,8 @@ def write_package(
         "refined_by": refined_by,  # 做 AI 校对和翻译的模型，没做则为 None
         "has_dictionary": dictionary is not None,
         "lang": lang,  # ja / en（英语模式，测试版）
+        "work": work,  # 导入时填的作品名（用来准备专有名词），重新生成时沿用
+        "terms": terms,  # 导入时手动补充的专有名词
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     (pkg_dir / "subtitles.json").write_text(

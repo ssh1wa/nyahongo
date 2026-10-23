@@ -143,6 +143,8 @@ window.addEventListener("hashchange", route);
 
 // ---------- 学习库 ----------
 const uploads = new Map(); // 正在上传的本地文件（还没变成任务）
+let currentWork = ""; // 导入页填的作品名
+let currentTerms = ""; // 导入页手动补充的专有名词
 
 function renderLibrary() {
   document.title = "にゃほんご PC 端";
@@ -166,6 +168,11 @@ function renderLibrary() {
           </div>
           <span class="hint">也可以 <button class="link-btn" id="pick-file" type="button">选择本地文件（可多选）</button> 或直接拖进窗口</span>
         </div>
+        <div class="work-row">
+          <input class="text-input" id="work" maxlength="80" autocomplete="off" placeholder="作品名（可选），例如 轻音少女">
+          <input class="text-input" id="terms" maxlength="500" autocomplete="off" placeholder="补充专有名词（可选），例如 唯（ゆい） 桜が丘">
+          <span class="hint">填作品名会先从 Bangumi 查角色名、地名，AI 补上读音和昵称；查不到或不全的，在右边自己补，用空格隔开，括号里可以写读音。AI 校对时会把听错的人名改对，注音也按这里的读音。</span>
+        </div>
         <div class="sites">
           <strong>支持的网站</strong>
           视频：B 站、YouTube、niconico、TVer、ABEMA 等 ·
@@ -188,6 +195,14 @@ function renderLibrary() {
   playlist.checked = store.get("playlist", false);
   playlist.addEventListener("change", () => store.set("playlist", playlist.checked));
 
+  // 作品名只在这次打开窗口期间记住：连着导入同一部作品的几集不用重填，换作品时不会误用
+  const workBox = $("#work");
+  workBox.value = currentWork;
+  workBox.addEventListener("input", () => { currentWork = workBox.value.trim(); });
+  const termsBox = $("#terms");
+  termsBox.value = currentTerms;
+  termsBox.addEventListener("input", () => { currentTerms = termsBox.value.trim(); });
+
   const urlBox = $("#url");
   const autoGrow = () => { urlBox.style.height = "auto"; urlBox.style.height = `${Math.min(urlBox.scrollHeight, 180)}px`; };
   urlBox.addEventListener("input", autoGrow);
@@ -203,7 +218,7 @@ function renderLibrary() {
     const btn = e.submitter;
     if (btn) { btn.disabled = true; btn.textContent = playlist.checked ? "展开合集中…" : "提交中…"; }
     try {
-      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked, lang: langEn.checked ? "en" : "ja" }) });
+      const r = await api("/api/jobs/batch", { method: "POST", body: JSON.stringify({ sources, audio_only: audioOnly.checked, playlist: playlist.checked, lang: langEn.checked ? "en" : "ja", work: currentWork, terms: currentTerms }) });
       urlBox.value = "";
       autoGrow();
       toast(r.failed.length ? `已加入 ${r.created} 个任务，${r.failed.length} 个合集展开失败，按单个链接处理` : `已加入 ${r.created} 个任务`);
@@ -268,7 +283,7 @@ async function loadLibrary() {
     e.stopPropagation();
     const item = items.find((x) => x.id === btn.dataset.redo);
     try {
-      await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: item.source_url, audio_only: item.media_type === "audio", overwrite: true, lang: item.lang || "ja" }) });
+      await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: item.source_url, audio_only: item.media_type === "audio", overwrite: true, lang: item.lang || "ja", work: item.work, terms: item.terms }) });
       toast("已加入处理队列：已下载的视频和转写结果会直接复用");
       pollSidebar();
     } catch (err) { toast(err.message); }
@@ -331,7 +346,7 @@ async function refreshJobs() {
   wrap.querySelectorAll("[data-overwrite]").forEach((b) => b.addEventListener("click", async () => {
     const job = data.jobs.find((j) => j.id === b.dataset.overwrite);
     await api(`/api/jobs/${job.id}`, { method: "DELETE" });
-    await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: job.source, audio_only: job.audio_only, overwrite: true, title: job.title, lang: job.lang || "ja" }) });
+    await api("/api/jobs", { method: "POST", body: JSON.stringify({ source: job.source, audio_only: job.audio_only, overwrite: true, title: job.title, lang: job.lang || "ja", work: job.work, terms: job.terms }) });
     toast("已重新加入队列");
     refreshJobs();
   }));
@@ -392,7 +407,7 @@ let uploading = false;
 let uploadSeq = 0;
 
 function uploadFile(file) {
-  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja" });
+  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja", work: currentWork, terms: currentTerms });
   refreshJobs();
   pumpUploads();
 }
@@ -405,7 +420,7 @@ function pumpUploads() {
   uploading = true;
   u.started = true;
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}&lang=${u.lang}`);
+  xhr.open("POST", `/api/upload?filename=${encodeURIComponent(u.name)}&audio_only=${u.audioOnly}&lang=${u.lang}&work=${encodeURIComponent(u.work || "")}&terms=${encodeURIComponent(u.terms || "")}`);
   xhr.upload.onprogress = (e) => { if (e.lengthComputable) u.progress = e.loaded / e.total; };
   xhr.onloadend = () => {
     uploads.delete(key);
@@ -829,10 +844,15 @@ async function renderSettings() {
       <div class="field">
         <label class="switch"><input type="checkbox" id="hf-mirror"${s.whisper.hf_mirror ? " checked" : ""}><span class="track"></span>国内网络：模型从国内镜像（hf-mirror.com）下载</label>
       </div>
-      <div class="field"><label>角色名、专有名词（可选）</label>
-        <input class="text-input" id="initial-prompt" value="${esc(s.whisper.initial_prompt)}" placeholder="例如：田中さん 山田先生 東京タワー">
-        <div class="set-hint">动画里的人名、地名识别不准时填在这里，用空格隔开。</div>
+    </section>
+
+    <section class="set-card" id="update-card">
+      <h2>关于与更新</h2>
+      <div class="row">
+        <span>当前版本 <b>v${esc(updateInfo.current || "")}</b></span>
+        <button class="btn small" id="check-update" type="button">检查更新</button>
       </div>
+      <div id="update-result">${updateHtml(updateInfo)}</div>
     </section>
 
     <section class="set-card">
@@ -893,10 +913,47 @@ async function renderSettings() {
   $("#max-height").addEventListener("change", () => save({ download: { max_height: Number($("#max-height").value) } }));
   $("#whisper-model").addEventListener("change", () => save({ whisper: { model: $("#whisper-model").value } }));
   $("#hf-mirror").addEventListener("change", () => save({ whisper: { hf_mirror: $("#hf-mirror").checked } }));
-  $("#initial-prompt").addEventListener("change", () => save({ whisper: { initial_prompt: $("#initial-prompt").value.trim() } }));
+  $("#check-update").addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    $("#update-result").innerHTML = '<div class="set-hint">正在检查…</div>';
+    await checkUpdate(true);
+    $("#update-result").innerHTML = updateHtml(updateInfo, true);
+    e.target.disabled = false;
+  });
   app.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () =>
     api("/api/open-folder", { method: "POST", body: JSON.stringify({ which: b.dataset.open }) }).catch((err) => toast(err.message))));
 }
+
+// ---------- 检查更新 ----------
+let updateInfo = { current: "" };
+
+async function checkUpdate(force = false) {
+  try { updateInfo = await api(`/api/update${force ? "?force=1" : ""}`); } catch (err) { updateInfo = { ...updateInfo, error: err.message }; }
+  const pill = $("#side-update");
+  pill.hidden = !updateInfo.newer;
+  if (updateInfo.newer) pill.innerHTML = `有新版本<strong>v${esc(updateInfo.latest)}</strong>`;
+}
+
+// 更新说明是 Markdown，简单去掉符号显示成纯文字（和手机 App 的 plainNotes 一样）
+const plainNotes = (md) => md.replace(/^#+\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1")
+  .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim();
+
+function updateHtml(u, checked = false) {
+  if (u.error) return `<div class="set-hint err">${esc(u.error)}。也可以直接去 <a href="${esc(u.url || "https://github.com/ssh1wa/nyahongo/releases")}" target="_blank">GitHub Releases</a> 看看。</div>`;
+  if (!u.latest) return "";
+  if (!u.newer) return checked ? '<div class="set-hint ok">已经是最新版本</div>' : "";
+  return `<div class="update-box">
+    <div><b>新版本 v${esc(u.latest)} 已发布</b></div>
+    ${u.notes ? `<div class="update-notes">${esc(plainNotes(u.notes))}</div>` : ""}
+    <div class="row">
+      ${u.download ? `<a class="btn small primary" href="${esc(u.download)}" target="_blank">下载安装包</a>` : ""}
+      <a class="btn small" href="${esc(u.url)}" target="_blank">查看更新说明</a>
+    </div>
+    <div class="set-hint">下载后先关掉这个窗口再安装，装到原来的位置；已填的 Key 和学习库会保留。</div>
+  </div>`;
+}
+checkUpdate();
+setInterval(checkUpdate, 6 * 3600 * 1000);
 
 // 还没填 AI Key 时，学习库上面提示一下
 async function refreshSetupBanner() {

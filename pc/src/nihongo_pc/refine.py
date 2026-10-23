@@ -36,6 +36,7 @@ TEXT_PROMPT = """你是日语字幕校对。输入是语音识别（Whisper）�
 对每一句：
 1. text：加上自然的日语标点（、。？！「」等）；只修正明显的识别错误（同音错字、错误的汉字写法、明显听错的词），可以参考上下文判断。不要改写、润色、补全或删减内容，口语、语气词、重复保持原样。
 2. zh：给出自然、准确的简体中文翻译。
+如果有 glossary（这部作品的人名、地名等专有名词，括号里是读音）：识别结果里读音相近、写法不对的人名或专有名词，按上下文改成 glossary 里的写法（例如角色「唯（ゆい）」被听成「優美」「由比」，改成「唯」）；用假名写的人名保持原样。
 句子的 id 和数量必须与输入一致，不要合并或拆分句子。context 里的句子只用来理解上下文，不要输出。
 只返回 JSON：{"sentences":[{"id":0,"text":"校对后的日语","zh":"中文翻译"}]}"""
 
@@ -44,14 +45,16 @@ READING_PROMPT = """你是日语读音校对。下面每句日语里的汉字词
 - 一词多读：人気（にんき/ひとけ）、上手（じょうず/うわて）、方（かた/ほう）、何（なに/なん）、今日（きょう/こんにち）、一日（いちにち/ついたち）
 - 动词可能形被当成别的动词：「入れませんでした」在"进不去"的意思里是 入る 的可能形，读 はいれ，不是 いれ（放入）
 - 人名地名、熟字训、连浊
+如果输入带 glossary（这部作品的人名、地名，括号里是读音）：只有写法和 glossary 完全相同的词才按 glossary 的读音，写法不同的词不要套用。
 逐个检查，只列出在这个上下文里读错的词：给出句子 id、编号 n，以及这个写法在此处的正确平假名读音（送假名也要包含在内，和写法完整对应）。读对的不要列出。
 只返回 JSON：{"fixes":[{"id":句子id,"n":编号,"reading":"正确读音"}]}，没有错误就返回 {"fixes":[]}"""
 
 
 def refine_text(
-    sentences: list[dict], llm: LlmConfig, on_progress: Callable[[float], None] | None = None
+    sentences: list[dict], llm: LlmConfig, on_progress: Callable[[float], None] | None = None,
+    glossary: list[str] | None = None,
 ) -> list[dict]:
-    """返回新列表：每句加上 text（校对后）和 zh（中文翻译），保留 start/end。"""
+    """返回新列表：每句加上 text（校对后）和 zh（中文翻译），保留 start/end。glossary：作品的专有名词"""
     out = [dict(s) for s in sentences]
 
     def request(start: int):
@@ -61,6 +64,8 @@ def refine_text(
             "sentences": [{"id": start + i, "text": s["text"]}
                           for i, s in enumerate(sentences[start : start + BATCH])],
         }
+        if glossary:
+            payload["glossary"] = glossary
         return chat_json(llm, [
             {"role": "system", "content": TEXT_PROMPT},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -119,10 +124,16 @@ def _annotated(tokens: list[dict]) -> str:
 
 
 def refine_readings(
-    sentences: list[dict], llm: LlmConfig, on_progress: Callable[[float], None] | None = None
+    sentences: list[dict], llm: LlmConfig, on_progress: Callable[[float], None] | None = None,
+    glossary: list[str] | None = None,
 ) -> int:
     """就地修正 sentences[i]['tokens'] 里的读音，返回修正了多少处。"""
     fixed = 0
+    # 词表的读音 → 写法：词表里的读音只能给同样写法的词（AI 会把「唯（ゆい）」的读音套到「唯美」上）
+    glossary_kana: dict[str, set[str]] = {}
+    for g in glossary or []:
+        if m := re.fullmatch(r"(.+)（(.+)）", g):
+            glossary_kana.setdefault(m.group(2), set()).add(m.group(1))
     # 标注文本先在主线程里生成好，工作线程只发请求
     annotated = [_annotated(s["tokens"]) for s in sentences]
 
@@ -134,7 +145,8 @@ def refine_readings(
             return {"fixes": []}
         return chat_json(llm, [
             {"role": "system", "content": READING_PROMPT},
-            {"role": "user", "content": json.dumps(lines, ensure_ascii=False)},
+            {"role": "user", "content": json.dumps({"glossary": glossary, "lines": lines} if glossary else lines,
+                                                   ensure_ascii=False)},
         ], temperature=0.0, max_tokens=4000)
 
     for start, result in _run_batches(len(sentences), request, "读音校对", on_progress):
@@ -150,7 +162,7 @@ def refine_readings(
             if not 0 <= n < len(tokens) or not reading or not _has_kanji_reading(tokens[n]):
                 continue
             t = tokens[n]
-            if t["reading"] == reading:
+            if t["reading"] == reading or (reading in glossary_kana and t["surface"] not in glossary_kana[reading]):
                 continue
             furigana = align(t["surface"], reading)
             # 对不齐说明给的读音和写法不匹配，不采用；

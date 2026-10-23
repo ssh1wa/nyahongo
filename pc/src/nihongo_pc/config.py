@@ -28,7 +28,6 @@ class WhisperConfig:
     device: str = "auto"  # auto / cuda / cpu
     compute_type: str = "auto"  # auto：GPU 用 float16，CPU 用 int8
     beam_size: int = 5
-    initial_prompt: str = ""  # 可填角色名、专有名词，帮助识别
     hf_mirror: bool = False  # 模型从国内镜像 hf-mirror.com 下载
 
 

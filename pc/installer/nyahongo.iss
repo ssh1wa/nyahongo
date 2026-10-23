@@ -4,7 +4,10 @@
 ; 打开以后是独立的窗口（pywebview），不用浏览器、没有命令行窗口。
 
 #define AppName "にゃほんご PC 端"
-#define AppVersion "0.3.0"
+; 版本号由 build.ps1 从 src\nihongo_pc\__init__.py 传进来（/DAppVersion=…），检查更新也用它
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
 #define AppId "ssh1wa.nyahongo.pc"
 #define Repo "https://github.com/ssh1wa/nyahongo"
 

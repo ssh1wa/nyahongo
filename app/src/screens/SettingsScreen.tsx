@@ -5,7 +5,7 @@ import {
   Search, Sparkles, Sun, SunMoon, Trash2,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, ErrorNote, Segmented, SectionLabel } from '../components/Ui';
@@ -15,6 +15,7 @@ import { listModels, testModel, type ModelInfo } from '../lib/llm';
 import { getPcUrl, pingPc, setPcUrl } from '../lib/packages';
 import { kvGet, kvSet } from '../lib/db';
 import { lastSyncStatus, onSynced, syncNow, type SyncStatus } from '../lib/sync';
+import { checkUpdate, plainNotes, type UpdateInfo } from '../lib/updates';
 import { deepseekSearch, loadOwnSearchKey, saveOwnSearchKey } from '../lib/search';
 import { DEFAULT_LLM, loadLlmSettings, saveLlmSettings, visionEndpoint, type Level, type LlmSettings } from '../lib/settings';
 import {
@@ -848,11 +849,41 @@ function DictSection() {
 
 // ---------- 关于 ----------
 
+function UpdateCard() {
+  const c = useColors();
+  const [state, setState] = useState<{ loading: boolean; info?: UpdateInfo; error?: string }>({ loading: false });
+  const check = async () => {
+    setState({ loading: true });
+    try { setState({ loading: false, info: await checkUpdate() }); } catch (e) { setState({ loading: false, error: e instanceof Error ? e.message : String(e) }); }
+  };
+  const { info } = state;
+  return (
+    <Card style={{ gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text style={{ color: c.ink, fontSize: 15, fontWeight: '700', flex: 1 }}>检查更新</Text>
+        <Button label={state.loading ? '检查中…' : '检查'} kind="secondary" small onPress={check} disabled={state.loading} />
+      </View>
+      {state.error ? <ErrorNote message={`${state.error}。也可以在电脑浏览器打开 github.com/ssh1wa/nyahongo/releases 看看`} /> : null}
+      {info && !info.newer ? <Text style={{ color: c.ok, fontSize: 13 }}>已经是最新版本（v{info.current}）</Text> : null}
+      {info?.newer ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: c.accent, fontSize: 14, fontWeight: '700' }}>新版本 v{info.latest} 已发布（现在是 v{info.current}）</Text>
+          {info.notes ? <Text style={{ color: c.ink2, fontSize: 12.5, lineHeight: 19 }} numberOfLines={14}>{plainNotes(info.notes)}</Text> : null}
+          <Button label="下载新版 App" onPress={() => void Linking.openURL(info.apk ?? info.url)} />
+          <Text style={{ color: c.muted, fontSize: 12, lineHeight: 18 }}>下载后点开安装包直接覆盖安装，学习记录、生词本都会保留。</Text>
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
 function AboutSection() {
   const c = useColors();
   const version = Constants.expoConfig?.version ?? '';
   return (
     <>
+      <SectionLabel>更新</SectionLabel>
+      <UpdateCard />
       <SectionLabel>关于</SectionLabel>
       <Card style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

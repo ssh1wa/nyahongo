@@ -2,10 +2,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { BookMarked, BookOpenText, GraduationCap, Headphones, Languages } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, ToastAndroid, useWindowDimensions, View } from 'react-native';
+import { Alert, AppState, Linking, Pressable, StyleSheet, Text, ToastAndroid, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markActive, setForeground, tick } from './src/lib/game';
 import { autoSync, onSynced } from './src/lib/sync';
+import { autoCheckUpdate, plainNotes, skipUpdate } from './src/lib/updates';
 import { NavContext, type Nav, type TabId } from './src/nav';
 import { SpriteProvider } from './src/game/Sprites';
 import { SelectionProvider } from './src/components/Selection';
@@ -56,6 +57,20 @@ function Main() {
     const off = onSynced((r) => { if (r.ok && r.changes) ToastAndroid.show(`已从其他设备同步 ${r.changes} 项`, ToastAndroid.SHORT); });
     const timer = setInterval(() => tick(15), 15000);
     return () => { sub.remove(); off(); clearInterval(timer); };
+  }, []);
+
+  // 检查更新：打开几秒后查一次（一天最多一次），有新版本弹窗问一下
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const u = await autoCheckUpdate();
+      if (!u) return;
+      const notes = plainNotes(u.notes);
+      Alert.alert(`发现新版本 v${u.latest}`, `${notes.length > 400 ? `${notes.slice(0, 400)}…` : notes}\n\n现在是 v${u.current}。下载后直接安装，学习记录会保留。`, [
+        { text: '以后再说', style: 'cancel', onPress: () => void skipUpdate(u.latest) },
+        { text: '下载', onPress: () => void Linking.openURL(u.apk ?? u.url) },
+      ]);
+    }, 4000);
+    return () => clearTimeout(t);
   }, []);
 
   const goTab = useCallback((t: TabId) => {

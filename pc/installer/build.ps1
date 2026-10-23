@@ -26,6 +26,11 @@ im = Image.open(r'..\..\app\assets\icon.png').convert('RGBA')
 im.save('nyahongo.ico', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 "@
 
-& $iscc /Q nyahongo.iss
+# 版本号只在 __init__.py 里写一处
+$init = Get-Content ..\src\nihongo_pc\__init__.py -Raw -Encoding utf8
+if ($init -notmatch '__version__ = "([\d.]+)"') { throw '__init__.py 里找不到 __version__' }
+$version = $Matches[1]
+
+& $iscc /Q "/DAppVersion=$version" nyahongo.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup 出错（$LASTEXITCODE）" }
 Get-ChildItem Output\*.exe | ForEach-Object { '{0}  {1:N1} MB' -f $_.FullName, ($_.Length / 1MB) }

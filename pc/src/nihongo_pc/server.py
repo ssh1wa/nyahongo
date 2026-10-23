@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from .config import load_config
 from .dictionary import ATTRIBUTION
 from .package import make_thumbnail
-from . import phone_dict, settings, sync
+from . import phone_dict, settings, sync, updates
 from . import config as _config
 from .config import LlmConfig
 from .llm import LlmError, chat_json, list_models
@@ -139,6 +139,12 @@ async def open_folder(request: Request) -> dict:
     target.mkdir(parents=True, exist_ok=True)
     os.startfile(target)  # type: ignore[attr-defined]  # 只在 Windows 上用
     return {"ok": True}
+
+
+@app.get("/api/update")
+def check_update(force: bool = False) -> dict:
+    """GitHub 上有没有新版本（只有本机能访问）"""
+    return updates.check(force)
 
 
 @app.get("/api/lan")
@@ -256,6 +262,8 @@ class Job:
     overwrite: bool = False
     title: str | None = None
     lang: str = "ja"  # ja / en（英语模式，测试版）
+    work: str | None = None  # 作品名，用来准备专有名词
+    terms: str | None = None  # 手动补充的专有名词
     status: str = "queued"  # queued / running / done / error
     stage: int = 0
     stage_progress: float | None = 0
@@ -290,7 +298,8 @@ def _worker() -> None:
                 job.notes.append(msg)
 
         try:
-            opts = Options(audio_only=job.audio_only, overwrite=job.overwrite, title=job.title, lang=job.lang)
+            opts = Options(audio_only=job.audio_only, overwrite=job.overwrite, title=job.title, lang=job.lang,
+                           work=job.work, terms=job.terms)
             result = run(job.source, load_config(), opts, progress, notice)
             job.pkg_id = result.pkg_dir.name
             job.display = result.title
@@ -325,6 +334,12 @@ class JobRequest(BaseModel):
     overwrite: bool = False
     title: str | None = None
     lang: str = "ja"
+    work: str | None = None
+    terms: str | None = None
+
+
+def _work(value: str | None, limit: int = 80) -> str | None:
+    return (value or "").strip()[:limit] or None
 
 
 @app.post("/api/jobs")
@@ -333,7 +348,8 @@ def create_job(req: JobRequest) -> dict:
     if not source:
         raise HTTPException(400, "请输入链接")
     return _submit(Job(id=uuid.uuid4().hex[:8], source=source, display=req.title or source,
-                       audio_only=req.audio_only, overwrite=req.overwrite, title=req.title, lang=_lang(req.lang)))
+                       audio_only=req.audio_only, overwrite=req.overwrite, title=req.title, lang=_lang(req.lang),
+                       work=_work(req.work), terms=_work(req.terms, 500)))
 
 
 # ---------- 手机离线词典 ----------
@@ -385,6 +401,8 @@ class BatchRequest(BaseModel):
     audio_only: bool = False
     playlist: bool = False  # 把合集/播放列表/多分 P 展开成单集
     lang: str = "ja"
+    work: str | None = None
+    terms: str | None = None
 
 
 @app.post("/api/jobs/batch")
@@ -406,14 +424,16 @@ def create_jobs(req: BatchRequest) -> dict:
             except Exception as e:  # noqa: BLE001 — 展开失败就当单个链接处理，并告诉用户
                 failed.append(f"{source}：{e}")
         for url, display in items:
-            created.append(_submit(Job(id=uuid.uuid4().hex[:8], source=url, display=display, audio_only=req.audio_only, lang=lang)))
+            created.append(_submit(Job(id=uuid.uuid4().hex[:8], source=url, display=display, audio_only=req.audio_only, lang=lang,
+                                       work=_work(req.work), terms=_work(req.terms, 500))))
     if not created:
         raise HTTPException(400, "没有可处理的链接")
     return {"created": len(created), "failed": failed}
 
 
 @app.post("/api/upload")
-async def upload(request: Request, filename: str, audio_only: bool = False, lang: str = "ja") -> dict:
+async def upload(request: Request, filename: str, audio_only: bool = False, lang: str = "ja",
+                 work: str | None = None, terms: str | None = None) -> dict:
     """浏览器拿不到本地文件路径，所以把文件流式传到 workspace/uploads 再处理。"""
     name = Path(filename).name
     if not name:
@@ -426,7 +446,8 @@ async def upload(request: Request, filename: str, audio_only: bool = False, lang
             f.write(chunk)
     title = Path(name).stem
     return _submit(Job(id=uuid.uuid4().hex[:8], source=str(target), display=title,
-                       audio_only=audio_only, title=title, lang=_lang(lang)))
+                       audio_only=audio_only, title=title, lang=_lang(lang), work=_work(work),
+                       terms=_work(terms, 500)))
 
 
 @app.get("/api/jobs")

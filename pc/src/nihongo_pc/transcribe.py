@@ -120,7 +120,6 @@ def _transcribe(media: Path, cfg: WhisperConfig, on_progress, language: str, not
         vad_filter=True,  # 跳过静音段，减少幻觉
         vad_parameters={"min_silence_duration_ms": 500},
         condition_on_previous_text=False,  # 防止一句话错了之后连环重复
-        initial_prompt=(cfg.initial_prompt or None) if language == "ja" else None,  # 提示词是日语的
     )
 
     raw: list[dict] = []
