@@ -98,6 +98,9 @@ def chat_json(
             "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
         }
+        # DeepSeek 官方默认先「思考」：思考算在 max_tokens 里（长批次会被截断），还更慢更贵，校对翻译不需要
+        if "api.deepseek.com" in cfg.base_url:
+            body["thinking"] = {"type": "disabled"}
         # 批量任务可以用便宜但慢一点的档位（DeepInfra 的 flex）；不支持的服务会忽略这个字段
         if service_tier:
             body["service_tier"] = service_tier

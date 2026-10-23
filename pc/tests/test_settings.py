@@ -60,6 +60,6 @@ def test_phone_cannot_read_or_change_settings(cfg_file, phone):
 
 def test_stalling_default_model_is_replaced(cfg_file):
     cfg_file.write_text('[llm]\nmodel = "deepseek-ai/DeepSeek-V4.1-Flash"\n', encoding="utf-8")
-    assert config.load_config().llm.model == config.DEFAULT_MODEL
+    assert config.load_config().llm.model == "deepseek-ai/DeepSeek-V4.1-Flash-1017"
     cfg_file.write_text('[llm]\nmodel = "deepseek-chat"\n', encoding="utf-8")
     assert config.load_config().llm.model == "deepseek-chat"  # 自己选的模型不动

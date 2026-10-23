@@ -1,12 +1,13 @@
 // 设置：分栏 —— AI 接口（自动检测模型、连接测试、联网搜索）、用量、学习、外观、同步与词典、关于
 import Constants from 'expo-constants';
 import {
-  BarChart3, BookOpen, Bot, Check, ChevronLeft, CircleCheck, CircleX, Eye, EyeOff, Info, Laptop, Moon, Palette, RefreshCw,
+  BarChart3, BookOpen, Bot, Check, ChevronLeft, CircleCheck, CircleHelp, CircleX, Eye, EyeOff, Info, Laptop, Moon, Palette, RefreshCw,
   Search, Sparkles, Sun, SunMoon,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, FlatList, KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ApiGuide } from '../components/ApiGuide';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, ErrorNote, Segmented, SectionLabel } from '../components/Ui';
 import { ensureDict, localDictInfo, type DictInfo } from '../lib/dict';
@@ -17,7 +18,10 @@ import { kvGet, kvSet } from '../lib/db';
 import { lastSyncStatus, onSynced, syncNow, type SyncStatus } from '../lib/sync';
 import { checkUpdate, plainNotes, type UpdateInfo } from '../lib/updates';
 import { deepseekSearch, loadOwnSearchKey, saveOwnSearchKey } from '../lib/search';
-import { DEFAULT_LLM, loadLlmSettings, saveLlmSettings, visionEndpoint, type Level, type LlmSettings } from '../lib/settings';
+import {
+  DEEPSEEK_URL, DEFAULT_LLM, isDeepSeek, loadLlmSettings, saveLlmSettings, visionEndpoint, visionModelOf,
+  type ApiFormat, type Level, type LlmSettings,
+} from '../lib/settings';
 import {
   dailyCalls, deepinfraMonth, deepseekBalance, localUsage, providerKeys,
   type DeepInfraMonth, type DeepSeekBalance, type UsageKind, type UsageRange, type UsageTotal,
@@ -104,47 +108,70 @@ function Field({ label, value, onChange, secure, placeholder, url, right }: {
 
 // ---------- AI 接口 ----------
 
-// 常见的 OpenAI 兼容服务。site 是申请 API Key 的网站；vision 表示这家有能看图的模型
-const PROVIDERS = [
-  { id: 'deepseek', name: 'DeepSeek', url: 'https://api.deepseek.com', site: 'platform.deepseek.com', vision: false },
-  { id: 'deepinfra', name: 'DeepInfra', url: 'https://api.deepinfra.com/v1/openai', site: 'deepinfra.com', vision: true },
-  { id: 'bailian', name: '阿里云百炼', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', site: 'bailian.console.aliyun.com', vision: true },
-  { id: 'siliconflow', name: '硅基流动', url: 'https://api.siliconflow.cn/v1', site: 'cloud.siliconflow.cn', vision: true },
-] as const;
+// 常用服务商：点一下自动填接口地址、接口格式和推荐模型。DeepSeek 官方一个 Key 文字、看图、联网搜索都能用，放第一个推荐。
+// 申请 Key 的教程在 components/ApiGuide.tsx（id 对应）
+const PROVIDERS: Array<{ id: string; name: string; url: string; format: ApiFormat; model: string; vision: boolean; tag?: string }> = [
+  { id: 'deepseek', name: 'DeepSeek', tag: '推荐', url: DEEPSEEK_URL, format: 'openai', model: 'deepseek-flash', vision: true },
+  { id: 'bailian', name: '阿里云百炼', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', format: 'openai', model: '', vision: true },
+  { id: 'siliconflow', name: '硅基流动', url: 'https://api.siliconflow.cn/v1', format: 'openai', model: '', vision: true },
+  { id: 'deepinfra', name: 'DeepInfra', url: 'https://api.deepinfra.com/v1/openai', format: 'openai', model: 'deepseek-ai/DeepSeek-V4.1-Flash-1017', vision: true },
+  { id: 'anthropic', name: 'Claude', url: 'https://api.anthropic.com', format: 'anthropic', model: '', vision: true },
+  { id: 'gemini', name: 'Gemini', url: 'https://generativelanguage.googleapis.com/v1beta', format: 'gemini', model: '', vision: true },
+];
+
+const FORMATS: Array<{ value: ApiFormat; label: string }> = [
+  { value: 'openai', label: 'OpenAI 兼容' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'gemini', label: 'Gemini' },
+];
+const FORMAT_HINT: Record<ApiFormat, { placeholder: string; hint: string }> = {
+  openai: { placeholder: 'https://api.deepseek.com', hint: '大多数服务商都是这种，地址一般以 /v1 结尾（DeepSeek 不用）' },
+  anthropic: { placeholder: 'https://api.anthropic.com', hint: 'Claude 官方，或 DeepSeek 的 https://api.deepseek.com/anthropic' },
+  gemini: { placeholder: 'https://generativelanguage.googleapis.com/v1beta', hint: 'Google Gemini 官方接口' },
+};
 
 const normUrl = (u: string) => u.trim().replace(/\/+$/, '');
-const providerOf = (url: string) => PROVIDERS.find((p) => normUrl(p.url) === normUrl(url));
+const providerOf = (url: string, format: ApiFormat) => PROVIDERS.find((p) => normUrl(p.url) === normUrl(url) && p.format === format);
 
 type TestState = { status: 'idle' | 'testing' | 'ok' | 'fail'; text?: string };
+type EndpointPatch = { url?: string; format?: ApiFormat; model?: string };
 
-/** 选服务商：常见几家点一下就行，选「其他」才需要自己填接口地址 */
-function ProviderPicker({ url, onChange, visionOnly }: { url: string; onChange: (url: string) => void; visionOnly?: boolean }) {
+/** 接口地址优先：格式 + 地址自己填；下面的常用服务商点一下自动填好 */
+function EndpointEditor({ url, format, onChange, onGuide }: {
+  url: string; format: ApiFormat; onChange: (p: EndpointPatch) => void; onGuide: () => void;
+}) {
   const c = useColors();
-  const current = providerOf(url);
-  const [custom, setCustom] = useState(!current && !!url.trim());
-  const list = PROVIDERS.filter((p) => !visionOnly || p.vision);
+  const current = providerOf(url, format);
   const chip = (on: boolean) => [styles.preset, { backgroundColor: on ? c.accentSoft : c.surface2, borderColor: on ? c.accent : 'transparent' }];
   return (
-    <View style={{ gap: 8 }}>
-      <Text style={{ color: c.ink2, fontSize: 13 }}>服务商</Text>
-      <View style={styles.presets}>
-        {list.map((p) => {
-          const on = !custom && current?.id === p.id;
-          return (
-            <Pressable key={p.id} onPress={() => { setCustom(false); onChange(p.url); }} style={chip(on)}>
-              <Text style={{ color: on ? c.accent : c.ink2, fontSize: 13, fontWeight: on ? '700' : '500' }}>{p.name}</Text>
-            </Pressable>
-          );
-        })}
-        <Pressable onPress={() => setCustom(true)} style={chip(custom)}>
-          <Text style={{ color: custom ? c.accent : c.ink2, fontSize: 13, fontWeight: custom ? '700' : '500' }}>其他</Text>
-        </Pressable>
+    <View style={{ gap: 10 }}>
+      <View style={{ gap: 6 }}>
+        <Text style={{ color: c.ink2, fontSize: 13 }}>接口格式</Text>
+        <Segmented options={FORMATS} value={format} onChange={(v) => onChange({ format: v })} />
       </View>
-      {custom ? (
-        <Field label="接口地址（兼容 OpenAI 格式，一般以 /v1 结尾）" value={url} onChange={onChange} placeholder="https://…/v1" url />
-      ) : current ? (
-        <Text style={{ color: c.muted, fontSize: 12 }}>在 {current.site} 注册并创建 API Key，复制到下面。</Text>
-      ) : null}
+      <Field label="接口地址" value={url} onChange={(v) => onChange({ url: v })} placeholder={FORMAT_HINT[format].placeholder} url />
+      <Text style={{ color: c.muted, fontSize: 12, marginTop: -4 }}>{FORMAT_HINT[format].hint}</Text>
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ color: c.ink2, fontSize: 13 }}>常用服务商（点一下自动填好）</Text>
+          <Pressable onPress={onGuide} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <CircleHelp size={16} color={c.accent} />
+            <Text style={{ color: c.accent, fontSize: 12.5 }}>怎么申请 Key</Text>
+          </Pressable>
+        </View>
+        <View style={styles.presets}>
+          {PROVIDERS.map((p) => {
+            const on = current?.id === p.id;
+            return (
+              <Pressable key={p.id} onPress={() => onChange({ url: p.url, format: p.format, ...(p.model ? { model: p.model } : {}) })} style={chip(on)}>
+                <Text style={{ color: on ? c.accent : c.ink2, fontSize: 13, fontWeight: on ? '700' : '500' }}>
+                  {p.name}{p.tag ? `（${p.tag}）` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
@@ -172,9 +199,10 @@ function AiSection() {
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState('');
   const [picker, setPicker] = useState<'model' | 'visionModel' | null>(null);
+  const [guide, setGuide] = useState(false);
   const [tests, setTests] = useState<Record<'model' | 'visionModel', TestState>>({ model: { status: 'idle' }, visionModel: { status: 'idle' } });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // 拍照识字另选一家（比如文字用 DeepSeek 官方，它没有看图模型）
+  // 拍照识字另选一家（文字模型不能看图时）
   const [separate, setSeparate] = useState(false);
   const [visionModels, setVisionModels] = useState<ModelInfo[] | null>(null);
   const [loadingVision, setLoadingVision] = useState(false);
@@ -220,21 +248,21 @@ function AiSection() {
   const lastDetected = useRef('');
   useEffect(() => {
     if (!loaded) return;
-    const sig = `${s.baseUrl}|${s.apiKey}`;
+    const sig = `${s.apiFormat}|${s.baseUrl}|${s.apiKey}`;
     if (!s.apiKey.trim() || !s.baseUrl.trim() || sig === lastDetected.current) return;
     const t = setTimeout(() => { lastDetected.current = sig; void detect(); }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.apiKey, s.baseUrl, loaded]);
+  }, [s.apiKey, s.baseUrl, s.apiFormat, loaded]);
   const lastVision = useRef('');
   useEffect(() => {
     if (!loaded || !separate) return;
-    const sig = `${s.visionBaseUrl}|${vision.apiKey}`;
+    const sig = `${s.visionApiFormat}|${s.visionBaseUrl}|${vision.apiKey}`;
     if (!vision.apiKey.trim() || !s.visionBaseUrl.trim() || sig === lastVision.current) return;
     const t = setTimeout(() => { lastVision.current = sig; void detectVision(); }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.visionBaseUrl, vision.apiKey, separate, loaded]);
+  }, [s.visionBaseUrl, s.visionApiFormat, vision.apiKey, separate, loaded]);
 
   const test = async (which: 'model' | 'visionModel') => {
     setTests((t) => ({ ...t, [which]: { status: 'testing' } }));
@@ -247,37 +275,59 @@ function AiSection() {
     }
   };
 
-  const modelRow = (which: 'model' | 'visionModel', label: string, hint: string) => {
+  const modelRow = (which: 'model' | 'visionModel', label: string, hint: string, emptyText = '点击选择模型') => {
     const t = tests[which];
     const list = which === 'visionModel' && separate ? visionModels : models;
     // 换了服务商以后，原来选的模型这家可能没有
-    const missing = !!s[which] && !!list && !list.some((m) => m.id === s[which]);
+    const missing = !!s[which] && !!list && list.length > 0 && !list.some((m) => m.id === s[which]);
+    const canTest = which === 'visionModel' ? !!vision.apiKey && !!visionModelOf(s) : !!s.apiKey && !!s.model;
     return (
       <View style={{ gap: 6 }}>
         <Text style={{ color: c.ink2, fontSize: 13 }}>{label}</Text>
         <Pressable onPress={() => setPicker(which)} style={[styles.select, { borderColor: missing ? c.warn : c.line, backgroundColor: c.bg }]}>
-          <Text numberOfLines={1} style={{ flex: 1, color: s[which] ? c.ink : c.muted, fontSize: 14.5 }}>{s[which] || '点击选择模型'}</Text>
+          <Text numberOfLines={1} style={{ flex: 1, color: s[which] ? c.ink : c.muted, fontSize: 14.5 }}>{s[which] || emptyText}</Text>
+          {which === 'visionModel' && s.visionModel ? (
+            <Pressable onPress={() => update({ visionModel: '' })} hitSlop={8}><Text style={{ color: c.muted, fontSize: 12.5 }}>清除</Text></Pressable>
+          ) : null}
           <Text style={{ color: c.accent, fontSize: 13, fontWeight: '700' }}>选择</Text>
         </Pressable>
         {missing ? <Text style={{ color: c.warn, fontSize: 12 }}>这家服务的模型列表里没有它，请重新选择</Text> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: c.muted, fontSize: 12 }}>{hint}</Text>
-          <Button label="测试" kind="secondary" small onPress={() => test(which)} loading={t.status === 'testing'} disabled={!(which === 'visionModel' ? vision.apiKey : s.apiKey) || !s[which]} />
+          <Button label="测试" kind="secondary" small onPress={() => test(which)} loading={t.status === 'testing'} disabled={!canTest} />
         </View>
         {t.status === 'ok' ? <StatusLine ok text={t.text!} /> : t.status === 'fail' ? <StatusLine text={t.text!} /> : null}
       </View>
     );
   };
 
-  const mainHasVision = providerOf(s.baseUrl)?.vision ?? true;
+  const changeMain = (p: EndpointPatch) => {
+    update({ ...(p.url !== undefined ? { baseUrl: p.url } : {}), ...(p.format ? { apiFormat: p.format } : {}), ...(p.model ? { model: p.model } : {}) });
+    setModels(null);
+    setTests({ model: { status: 'idle' }, visionModel: { status: 'idle' } });
+  };
+  const changeVision = (p: EndpointPatch) => {
+    update({ ...(p.url !== undefined ? { visionBaseUrl: p.url } : {}), ...(p.format ? { visionApiFormat: p.format } : {}) });
+    setVisionModels(null);
+  };
+
+  const deepseekMain = isDeepSeek(s.baseUrl);
   return (
     <>
       <SectionLabel>AI 服务</SectionLabel>
       <Card style={{ gap: 14 }}>
         <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
-          翻译、讲解、出题都要用 AI。选一家 AI 服务，填上在它官网申请的 API Key 就能用，按用量付费。
+          翻译、讲解、出题、拍照识字都要用 AI。填上 AI 服务的接口地址和在它官网申请的 API Key 就能用，按用量付费。
         </Text>
-        <ProviderPicker url={s.baseUrl} onChange={(v) => update({ baseUrl: v })} />
+        {!deepseekMain ? (
+          <View style={[styles.recommend, { backgroundColor: c.accentSoft }]}>
+            <Text style={{ color: c.ink, fontSize: 13, lineHeight: 19, flex: 1 }}>
+              推荐用 DeepSeek 官方：一个 Key 就能翻译讲解、拍照识字、联网搜索，中文好、便宜、国内直接能连。
+            </Text>
+            <Button label="用 DeepSeek" small onPress={() => changeMain({ url: DEEPSEEK_URL, format: 'openai', model: 'deepseek-flash' })} />
+          </View>
+        ) : null}
+        <EndpointEditor url={s.baseUrl} format={s.apiFormat} onChange={changeMain} onGuide={() => setGuide(true)} />
         <KeyField label="API Key" value={s.apiKey} onChange={(v) => update({ apiKey: v })} placeholder="只保存在这台设备的加密存储里" />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: c.muted, fontSize: 12.5 }}>
@@ -286,14 +336,13 @@ function AiSection() {
           <Button label="重新读取" kind="ghost" small onPress={() => detect()} loading={loadingModels} disabled={!s.apiKey} icon={<RefreshCw size={14} color={c.ink2} />} />
         </View>
         {modelError ? <ErrorNote message={modelError} /> : null}
-        {modelRow('model', '模型', '翻译、讲解、语法课、出题都用它')}
+        {modelRow('model', '模型', deepseekMain ? 'DeepSeek 选 deepseek-flash 就行' : '翻译、讲解、语法课、出题都用它')}
       </Card>
 
-      <SectionLabel>拍照识字（可选）</SectionLabel>
+      <SectionLabel>拍照识字</SectionLabel>
       <Card style={{ gap: 14 }}>
         <Text style={{ color: c.ink2, lineHeight: 20, fontSize: 13.5 }}>
           拍书页、漫画或截图来识别日文，需要能看图的模型。
-          {!mainHasVision && !separate ? '你上面选的服务没有看图模型，要用这个功能请选「另选一家」。' : ''}
         </Text>
         <Segmented
           options={[{ value: 'same', label: '用上面那家' }, { value: 'separate', label: '另选一家' }]}
@@ -302,13 +351,16 @@ function AiSection() {
             const on = v === 'separate';
             setSeparate(on);
             setVisionModels(null);
-            if (!on) update({ visionBaseUrl: '', visionApiKey: '' });
-            else if (!s.visionBaseUrl) update({ visionBaseUrl: PROVIDERS[1].url });
+            if (!on) update({ visionBaseUrl: '', visionApiKey: '', visionApiFormat: 'openai' });
+            else if (!s.visionBaseUrl) update({ visionBaseUrl: DEEPSEEK_URL, visionApiFormat: 'openai' });
           }}
         />
+        {!separate && deepseekMain && !s.visionModel ? (
+          <StatusLine ok text="DeepSeek 的 deepseek-flash 能直接看图，不用另外设置" />
+        ) : null}
         {separate ? (
           <View style={{ gap: 12 }}>
-            <ProviderPicker url={s.visionBaseUrl} onChange={(v) => update({ visionBaseUrl: v })} visionOnly />
+            <EndpointEditor url={s.visionBaseUrl} format={s.visionApiFormat} onChange={changeVision} onGuide={() => setGuide(true)} />
             <KeyField label="这家的 API Key" value={s.visionApiKey} onChange={(v) => update({ visionApiKey: v })} placeholder="和上面同一家可以不填" />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={{ flex: 1, color: c.muted, fontSize: 12.5 }}>
@@ -319,7 +371,12 @@ function AiSection() {
             {visionError ? <ErrorNote message={visionError} /> : null}
           </View>
         ) : null}
-        {modelRow('visionModel', '看图模型', '模型名里带 VL、Vision 的一般都能看图')}
+        {modelRow(
+          'visionModel',
+          '看图模型',
+          separate ? '模型名里带 VL、Vision 的一般都能看图' : '不选就用上面的文字模型；它不能看图时再单独选',
+          separate ? '点击选择模型' : `和文字模型相同（${s.model || '未选'}）`,
+        )}
       </Card>
       {picker ? (
         <ModelPicker
@@ -332,6 +389,7 @@ function AiSection() {
           onClose={() => setPicker(null)}
         />
       ) : null}
+      {guide ? <ApiGuide onClose={() => setGuide(false)} /> : null}
     </>
   );
 }
@@ -886,6 +944,7 @@ const styles = StyleSheet.create({
   preview: { padding: 14, borderRadius: radius.md },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  recommend: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md },
   preset: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   bar: { height: 5, borderRadius: 3, overflow: 'hidden' },
 });

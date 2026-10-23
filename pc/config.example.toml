@@ -23,7 +23,7 @@ beam_size = 5
 hf_mirror = false         # 模型从国内镜像 hf-mirror.com 下载
 
 [llm]
-# 任何兼容 OpenAI 格式的接口都可以（DeepSeek、DeepInfra、阿里云百炼、硅基流动……）
-base_url = "https://api.deepinfra.com/v1/openai"
+# 推荐 DeepSeek 官方（platform.deepseek.com 申请 Key）；任何兼容 OpenAI 格式的接口都可以（阿里云百炼、硅基流动、DeepInfra……）
+base_url = "https://api.deepseek.com"
 api_key = ""              # 也可以不填，改用环境变量 NIHONGO_LLM_API_KEY
-model = "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+model = "deepseek-flash"

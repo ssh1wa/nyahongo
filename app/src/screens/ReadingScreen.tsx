@@ -5,7 +5,7 @@ import {
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, BackHandler, Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, BackHandler, Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, View,
 } from 'react-native';
 import { Reader } from '../components/Reader';
 import { References } from '../components/References';
@@ -18,7 +18,7 @@ import {
 import { addRoutine, deleteRoutine, listRoutines, localDate, todaysArticle, writeToday, type Routine } from '../lib/routines';
 import { deepseekSearch, searchMode, wikipediaSearch, wikipediaText, type SearchHit, type SearchMode } from '../lib/search';
 import type { RecordRow } from '../lib/records';
-import { loadLlmSettings } from '../lib/settings';
+import { loadLlmSettings, visionReady } from '../lib/settings';
 import { useNav } from '../nav';
 import { radius, useColors } from '../theme';
 
@@ -317,15 +317,25 @@ type Picked = { uri: string; width?: number };
 
 function PhotoForm({ onDone }: { onDone: (text: string) => void }) {
   const c = useColors();
+  const nav = useNav();
   const [images, setImages] = useState<Picked[]>([]);
+  // 识图要能用 AI：没填 Key（或另选的识图接口没选模型）就直接去设置页填
+  const needApi = async () => {
+    if (visionReady(await loadLlmSettings())) return false;
+    ToastAndroid.show('拍照识字要先填好 AI 服务的 API Key', ToastAndroid.LONG);
+    nav.openSettings();
+    return true;
+  };
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState('');
 
   const pick = async () => {
+    if (await needApi()) return;
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 20, quality: 1, orderedSelection: true });
     if (!r.canceled) setImages((cur) => [...cur, ...r.assets.map((a) => ({ uri: a.uri, width: a.width }))].slice(0, 20));
   };
   const shoot = async () => {
+    if (await needApi()) return;
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('需要相机权限', '在系统设置里允许「にゃほんご」使用相机后再试。'); return; }
     const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });

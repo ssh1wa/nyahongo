@@ -51,7 +51,7 @@ export function Welcome() {
         <View style={[styles.block, { backgroundColor: c.surface, borderColor: c.line }]}>
           <View style={styles.row}><KeyRound size={18} color={c.accent} /><Text style={[styles.h, { color: c.ink }]}>填一个 AI 服务的 Key</Text></View>
           <Text style={[styles.p, { color: c.muted }]}>
-            翻译、讲解、出题都要用 AI。到 DeepSeek、DeepInfra 等 AI 服务的官网注册，创建一个 API Key 填到设置里就能用。按用量付费，日常学习花得很少。
+            翻译、讲解、出题、拍照识字都要用 AI。推荐 DeepSeek 官方：到 platform.deepseek.com 注册，创建一个 API Key 填到设置里，一个 Key 全部功能都能用。按用量付费，日常学习花得很少。设置里有申请教程。
           </Text>
         </View>
 

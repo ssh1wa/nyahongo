@@ -26,13 +26,34 @@ export async function localDictInfo(): Promise<DictInfo | null> {
   return kvGet<DictInfo | null>('dictInfo', null);
 }
 
+/**
+ * 把 APK 里的词典取到缓存目录（expo-asset 放在 cache/ExponentAsset-<哈希>.sqlite，下次会直接复用这个文件）。
+ * fresh：缓存里那份不对时删掉重取；Asset 对象一次运行里是同一个，要把「已取出」标记也清掉，不然直接返回旧路径
+ */
+async function extractBundled(fresh: boolean): Promise<File> {
+  const asset = Asset.fromModule(BUNDLED_FILE);
+  if (fresh) {
+    if (asset.localUri) {
+      try { const old = new File(asset.localUri); if (old.exists) old.delete(); } catch {}
+    }
+    asset.downloaded = false;
+    asset.localUri = null;
+  }
+  await asset.downloadAsync();
+  if (!asset.localUri) throw new Error('读取预装词典失败');
+  return new File(asset.localUri);
+}
+
 /** 预装的词典还没复制到手机存储（或者 App 更新带来了新版词典）时复制一份。打开 App 时就在后台调用。 */
 export function ensureDict(): Promise<void> {
   installing ??= (async () => {
     const info = await kvGet<DictInfo | null>('dictInfo', null);
     if (new File(DIR, NAME).exists && info?.version === BUNDLED.version) return;
-    const asset = await Asset.fromModule(BUNDLED_FILE).downloadAsync(); // 从 APK 里取出到缓存目录
-    if (!asset.localUri) throw new Error('读取预装词典失败');
+    // 大小都和导出时记下的真实大小（dictInfo.json）比，不拿两个文件互相比
+    let src = await extractBundled(false);
+    if (src.size !== BUNDLED.size) src = await extractBundled(true); // 缓存里是旧的或坏的：删掉重取
+    const extracted = src.size;
+    if (extracted !== BUNDLED.size) throw new Error(`从安装包取出的词典大小不对（${extracted} / 应为 ${BUNDLED.size} 字节）`);
     if (dbPromise) {
       try { (await dbPromise).closeSync(); } catch {}
       dbPromise = null;
@@ -40,12 +61,14 @@ export function ensureDict(): Promise<void> {
     // 词典目录里只放这一个词典：整个清掉重建，旧版本和上次中断留下的文件都不会挡路
     if (DIR.exists) DIR.delete();
     DIR.create({ intermediates: true });
-    // 用复制而不是 move / rename：这两个在小米手机上实测行为和文档不一致（文件没挪走、重名报错）
-    const src = new File(asset.localUri);
-    const target = new File(DIR, NAME);
-    src.copy(target);
-    if (!target.exists || target.size !== src.size) throw new Error('词典复制不完整，下次打开会重试');
-    // 缓存目录里取出来的那份、以前失败时留下的那份都删掉，省得多占 76 MB
+    // 注意 SDK 57 的 copy / move 是异步的（返回 Promise），同步版本叫 copySync / moveSync。
+    // 以前没 await，检查时文件还没复制完，所以一直报「复制不完整」
+    await src.copy(new File(DIR, NAME));
+    const copied = new File(DIR, NAME);
+    if (!copied.exists || copied.size !== BUNDLED.size) {
+      throw new Error(`词典复制不完整（复制出 ${copied.exists ? copied.size : '无文件'} / 取出 ${extracted} / 应为 ${BUNDLED.size} 字节），下次打开会重试`);
+    }
+    // 缓存目录里取出来的那份、以前失败时留下的那份都删掉，省得多占 80 MB
     for (const f of [src, new File(Paths.cache, NAME)]) {
       try { if (f.exists) f.delete(); } catch {}
     }

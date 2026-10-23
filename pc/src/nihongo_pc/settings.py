@@ -13,12 +13,13 @@ from pathlib import Path
 from . import config as _config
 from .config import PC_ROOT, Config, load_config
 
-# 常见的 AI 服务（和手机 App 设置里的一样）
+# 常见的 AI 服务（和手机 App 设置里的一样，推荐 DeepSeek 官方）。model：点了服务商自动填的推荐模型
 PROVIDERS = [
-    {"id": "deepseek", "name": "DeepSeek", "url": "https://api.deepseek.com", "site": "platform.deepseek.com"},
-    {"id": "deepinfra", "name": "DeepInfra", "url": "https://api.deepinfra.com/v1/openai", "site": "deepinfra.com"},
-    {"id": "bailian", "name": "阿里云百炼", "url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "site": "bailian.console.aliyun.com"},
-    {"id": "siliconflow", "name": "硅基流动", "url": "https://api.siliconflow.cn/v1", "site": "cloud.siliconflow.cn"},
+    {"id": "deepseek", "name": "DeepSeek（推荐）", "url": "https://api.deepseek.com", "site": "platform.deepseek.com", "model": "deepseek-flash"},
+    {"id": "bailian", "name": "阿里云百炼", "url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "site": "bailian.console.aliyun.com", "model": ""},
+    {"id": "siliconflow", "name": "硅基流动", "url": "https://api.siliconflow.cn/v1", "site": "cloud.siliconflow.cn", "model": ""},
+    {"id": "deepinfra", "name": "DeepInfra", "url": "https://api.deepinfra.com/v1/openai", "site": "deepinfra.com",
+     "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017"},
 ]
 
 WHISPER_MODELS = [
@@ -93,7 +94,7 @@ def write(cfg: Config, path: Path | None = None) -> None:
         f"hf_mirror = {_toml(w.hf_mirror)}           # 模型从国内镜像 hf-mirror.com 下载",
         "",
         "[llm]",
-        "# 任何兼容 OpenAI 格式的接口都可以（DeepSeek、DeepInfra、阿里云百炼、硅基流动……）",
+        "# 推荐 DeepSeek 官方；任何兼容 OpenAI 格式的接口都可以（阿里云百炼、硅基流动、DeepInfra……）",
         f"base_url = {_toml(cfg.llm.base_url)}",
         f"api_key = {_toml(cfg.llm.api_key)}         # 也可以不填，改用环境变量 NIHONGO_LLM_API_KEY",
         f"model = {_toml(cfg.llm.model)}",

@@ -761,7 +761,7 @@ async function renderSettings() {
       <p class="set-hint">AI 用来校对字幕、加上整句中文翻译、给词典补中文释义。不填也能处理视频，只是字幕没有中文翻译，识别错的字也不会被纠正。用和手机 App 同一家就行。</p>
       <div class="field"><label>服务商</label>
         <div class="chips" id="providers">
-          ${s.providers.map((p) => `<button type="button" class="chip${provider?.id === p.id ? " on" : ""}" data-url="${esc(p.url)}" data-site="${esc(p.site)}">${esc(p.name)}</button>`).join("")}
+          ${s.providers.map((p) => `<button type="button" class="chip${provider?.id === p.id ? " on" : ""}" data-url="${esc(p.url)}" data-site="${esc(p.site)}" data-model="${esc(p.model || "")}">${esc(p.name)}</button>`).join("")}
           <button type="button" class="chip${provider ? "" : " on"}" data-url="">其他</button>
         </div>
         <div class="set-hint" id="provider-hint">${provider ? `在 ${esc(provider.site)} 注册并创建 API Key，复制到下面。` : ""}</div>
@@ -847,7 +847,12 @@ async function renderSettings() {
     const custom = !b.dataset.url;
     $("#base-url").hidden = !custom;
     $("#provider-hint").textContent = custom ? "填写兼容 OpenAI 格式的接口地址，一般以 /v1 结尾。" : `在 ${b.dataset.site} 注册并创建 API Key，复制到下面。`;
-    if (!custom) { $("#base-url").value = b.dataset.url; save({ llm: { base_url: b.dataset.url } }); }
+    if (!custom) {
+      // 有推荐模型的（DeepSeek、DeepInfra）顺便填上
+      $("#base-url").value = b.dataset.url;
+      if (b.dataset.model) $("#model").value = b.dataset.model;
+      save({ llm: { base_url: b.dataset.url, ...(b.dataset.model ? { model: b.dataset.model } : {}) } });
+    }
     else $("#base-url").focus();
   }));
   $("#base-url").addEventListener("change", () => save({ llm: { base_url: $("#base-url").value.trim() } }));
