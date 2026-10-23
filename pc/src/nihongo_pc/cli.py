@@ -121,7 +121,7 @@ def main() -> None:
     add.add_argument("--no-compress", action="store_true", help="不压缩，直接复制原文件")
     add.add_argument("--overwrite", action="store_true", help="覆盖已存在的学习包")
     add.add_argument("--lang", choices=["ja", "en"], default="ja", help="视频的语言；en 是英语模式（测试版：双语字幕 + 点词查词）")
-    add.add_argument("--work", help="作品名（例如 轻音少女）：先查角色名等专有名词，转写和校对更准")
+    add.add_argument("--work", help="作品名：先查角色名等专有名词，转写和校对更准")
     add.set_defaults(func=cmd_add)
 
     ls = sub.add_parser("list", help="列出已有学习包")

@@ -41,6 +41,7 @@ Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"
 [Tasks]
 Name: "desktopicon"; Description: "在桌面创建快捷方式"; GroupDescription: "快捷方式："
 Name: "mirror"; Description: "国内网络：语音识别模型从国内镜像（hf-mirror.com）下载（以后可以在设置里改）"; GroupDescription: "下载："
+Name: "firewall"; Description: "允许手机连接这台电脑（添加一条 Windows 防火墙规则，会弹出一次管理员授权）"; GroupDescription: "手机连接：（不勾也行，之后在 PC 端界面里点「一键放行」）"
 
 [Files]
 Source: "..\src\nihongo_pc\*"; DestDir: "{app}\pc\src\nihongo_pc"; Excludes: "__pycache__,*.pyc"; Flags: recursesubdirs ignoreversion
@@ -70,6 +71,8 @@ Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\launch.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\nyahongo.ico"; AppUserModelID: "{#AppId}"; Tasks: desktopicon
 
 [Run]
+; 放行手机连接用的端口（按端口，不绑定程序路径，PC 端更新后也有效）；规则名和 PC 端界面里的「一键放行」一致
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Nyahongo PC 8765"" dir=in action=allow protocol=TCP localport=8765 profile=any"; Verb: runas; Flags: shellexec runhidden waituntilterminated; StatusMsg: "正在添加防火墙规则…"; Tasks: firewall
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\launch.ps1"""; WorkingDir: "{app}"; Description: "现在打开{#AppName}（第一次要下载约 2.5 GB 的组件）"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]

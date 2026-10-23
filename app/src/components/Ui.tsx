@@ -96,7 +96,7 @@ export function ScreenHeader({ kicker, title, right, titleExtra }: { kicker?: st
       <View style={{ flex: 1 }}><Title kicker={kicker} title={title} extra={titleExtra} /></View>
       {right}
       <Companion />
-      <Pressable onPress={nav.openSettings} hitSlop={8} style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}>
+      <Pressable onPress={() => nav.openSettings()} hitSlop={8} style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}>
         <Settings2 size={22} color={c.ink2} />
       </Pressable>
     </View>

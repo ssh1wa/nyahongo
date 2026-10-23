@@ -82,6 +82,15 @@ const NON_WORD = new Set(["補助記号", "記号", "空白"]);
   });
 })();
 
+// 「自动识别作品名」：自己改过就按自己的，没改过就看有没有填 AI 的 Key（填了默认打开）
+let autoWorkDefault = false;
+const autoWorkOn = () => store.get("autoWork", null) ?? autoWorkDefault;
+api("/api/settings").then((s) => {
+  autoWorkDefault = !!(s.llm.has_key && s.llm.model);
+  const box = $("#auto-work");
+  if (box && store.get("autoWork", null) === null) box.checked = autoWorkDefault;
+}).catch(() => {});
+
 // 侧边栏底部显示手机同步地址
 let lanInfo = null;
 api("/api/lan").then((lan) => {
@@ -91,7 +100,31 @@ api("/api/lan").then((lan) => {
   el.innerHTML = `<span>手机连接地址</span><strong>${esc(lan.urls[0].replace("http://", ""))}</strong>`;
   el.title = "在手机 App 的「设置 → 同步与词典」里填写这个地址";
   el.hidden = false;
+  refreshFirewall();
 }).catch(() => {});
+
+// Windows 防火墙还没放行时，导入页和手机页上面提示，点一下「一键放行」（弹出 Windows 的授权框）
+const FW_BANNER = `
+  <div class="setup-banner fw-banner">
+    <div><strong>手机可能连不上这台电脑</strong><br><span>Windows 防火墙还没放行 PC 端。点「一键放行」，在弹出的授权框里选「是」（只添加一条放行手机连接的规则）。</span></div>
+    <button class="btn small primary" type="button" data-fw-allow>一键放行</button>
+  </div>`;
+async function refreshFirewall() {
+  let needed = false;
+  try { needed = (await api("/api/firewall")).needed; } catch { /* 查不到就不提示 */ }
+  document.querySelectorAll(".fw-slot").forEach((el) => { el.innerHTML = needed ? FW_BANNER : ""; });
+  $("#side-lan")?.classList.toggle("warn", needed);
+}
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-fw-allow]");
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = "等待授权…";
+  let ok = false;
+  try { ok = (await api("/api/firewall/allow", { method: "POST" })).ok; } catch { /* 当作失败 */ }
+  toast(ok ? "已放行，手机现在可以连接了" : "没有放行成功：授权框要选「是」；还是不行的话看手机页下面的说明");
+  refreshFirewall();
+});
 
 // 侧边栏：当前页高亮、处理中的任务、学习包数量、没填 Key 的提醒（每页都显示，定时刷新）
 function markNav(name) {
@@ -155,6 +188,7 @@ function renderLibrary() {
     </header>
     <section class="hero">
       <div id="setup-banner"></div>
+      <div class="fw-slot"></div>
       <div class="add-panel">
         <form class="add-row" id="add-form">
           <textarea class="url-input" id="url" rows="1" placeholder="粘贴视频或播客的链接，一次可以粘贴多行…" autocomplete="off"></textarea>
@@ -169,10 +203,10 @@ function renderLibrary() {
           <span class="hint">也可以 <button class="link-btn" id="pick-file" type="button">选择本地文件（可多选）</button> 或直接拖进窗口</span>
         </div>
         <div class="work-row">
-          <input class="text-input" id="work" maxlength="80" autocomplete="off" placeholder="作品名（可选），例如 轻音少女">
-          <input class="text-input" id="terms" maxlength="500" autocomplete="off" placeholder="补充专有名词（可选），例如 唯（ゆい） 桜が丘">
-          <label class="switch" title="作品名空着时，从视频标题或文件名里认出是哪部作品（用 AI 认，花费很少），再查角色名"><input type="checkbox" id="auto-work"><span class="track"></span>自动识别作品名</label>
-          <span class="hint">填作品名会先从 Bangumi 查角色名、地名，AI 补上读音和昵称；查不到或不全的，在右边自己补，用空格隔开，括号里可以写读音。AI 校对时会把听错的人名改对，注音也按这里的读音。打开「自动识别作品名」，作品名空着时会按视频标题或文件名自己认（手动填的优先）。</span>
+          <input class="text-input" id="work" maxlength="80" autocomplete="off" placeholder="作品名（可选）">
+          <input class="text-input" id="terms" maxlength="500" autocomplete="off" placeholder="补充专有名词（可选）">
+          <label class="switch" title="作品名空着时，从视频标题或文件名里认出是哪部作品（用 AI 认，花费很少），再查角色名。填了 AI 的 Key 就默认打开"><input type="checkbox" id="auto-work"><span class="track"></span>自动识别作品名</label>
+          <span class="hint">填作品名会先从 Bangumi 查角色名、地名，AI 补上读音和昵称；查不到或不全的，在右边自己补，用空格隔开，括号里可以写读音。AI 校对时会把听错的人名改对，注音也按这里的读音。「自动识别作品名」在填了 AI 的 Key 后默认打开：作品名空着时会按视频标题或文件名自己认（手动填的优先）。</span>
         </div>
         <div class="sites">
           <strong>支持的网站</strong>
@@ -201,7 +235,7 @@ function renderLibrary() {
   workBox.value = currentWork;
   workBox.addEventListener("input", () => { currentWork = workBox.value.trim(); });
   const autoWork = $("#auto-work");
-  autoWork.checked = store.get("autoWork", false);
+  autoWork.checked = autoWorkOn();
   autoWork.addEventListener("change", () => store.set("autoWork", autoWork.checked));
   const termsBox = $("#terms");
   termsBox.value = currentTerms;
@@ -238,6 +272,7 @@ function renderLibrary() {
 
   refreshJobs();
   refreshSetupBanner();
+  refreshFirewall();
   const timer = setInterval(refreshJobs, 1000);
   cleanup = () => { clearInterval(timer); };
 }
@@ -382,7 +417,7 @@ let uploading = false;
 let uploadSeq = 0;
 
 function uploadFile(file) {
-  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja", work: currentWork, terms: currentTerms, autoWork: store.get("autoWork", false) });
+  uploads.set(`u${uploadSeq++}`, { name: file.name, progress: 0, started: false, file, audioOnly: store.get("audioOnly", false), lang: store.get("langEn", false) ? "en" : "ja", work: currentWork, terms: currentTerms, autoWork: autoWorkOn() });
   refreshJobs();
   pumpUploads();
 }
@@ -969,6 +1004,7 @@ function renderPhone() {
   const url = lanInfo?.urls?.[0]?.replace("http://", "");
   app.innerHTML = `
     <header class="page-head"><div><h1>连接手机</h1><p>手机和这台电脑连同一个 Wi-Fi，就能下载学习包、同步学习进度。</p></div></header>
+    <div class="fw-slot"></div>
     <section class="phone-hero">
       <div class="phone-addr">
         <span>手机连接地址</span>
@@ -980,7 +1016,7 @@ function renderPhone() {
         <li><b>填地址</b>App 右上角「设置 → 同步与词典 → PC 端地址」填上面的地址，点「测试连接并保存」</li>
         <li><b>下载学习包</b>回到 App 的「精听」页，下拉刷新，点「下载」</li>
       </ol>
-      <p class="set-hint">连不上的话：第一次打开 PC 端时 Windows 会问是否允许网络访问，要选「允许」。点错了在「Windows 安全中心 → 防火墙 → 允许应用通过防火墙」里把 Python 勾上。</p>
+      <p class="set-hint">连不上的话：多半是 Windows 防火墙没放行。页面上方出现「手机可能连不上这台电脑」时，点「一键放行」，在弹出的授权框里选「是」就好；也确认手机没连到别的 Wi-Fi、PC 端窗口还开着。</p>
     </section>
     <div class="section-title"><h2>多设备同步</h2></div>
     <div class="set-card"><p class="set-hint" style="margin:0">手机、平板都填同一个地址，生词本和复习进度、阅读和翻译记录、语法进度、精听学到哪一句、猫に小判会通过这台电脑自动合并。同步数据保存在 PC 端文件夹的 sync 里，会保留最近 30 个旧版本。</p></div>`;
@@ -988,4 +1024,5 @@ function renderPhone() {
     try { await navigator.clipboard.writeText($("#phone-url").textContent); toast("已复制"); } catch { toast("复制失败，手动选中复制吧"); }
   });
   if (!url) api("/api/lan").then((lan) => { lanInfo = lan; $("#phone-url").textContent = lan.urls[0]?.replace("http://", "") ?? "没有找到局域网地址"; }).catch(() => {});
+  refreshFirewall();
 }

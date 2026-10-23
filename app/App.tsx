@@ -8,7 +8,7 @@ import { markActive, setForeground, tick } from './src/lib/game';
 import { autoSync, onSynced } from './src/lib/sync';
 import { autoCheckUpdate, plainNotes, skipUpdate } from './src/lib/updates';
 import { ensureDict } from './src/lib/dict';
-import { NavContext, type Nav, type TabId } from './src/nav';
+import { NavContext, type Nav, type SettingsTab, type TabId } from './src/nav';
 import { SpriteProvider } from './src/game/Sprites';
 import { SelectionProvider } from './src/components/Selection';
 import { Welcome } from './src/components/Welcome';
@@ -38,7 +38,7 @@ function Main() {
   const rail = win.width > win.height;
   const [tab, setTab] = useState<TabId>('translate');
   const [playing, setPlaying] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<SettingsTab | null>(null); // 打开时是要显示的那一栏
   const [catRoomOpen, setCatRoomOpen] = useState(false);
   // 切过的标签保持挂载，切回来时页面状态还在（比如读到一半的文章）
   const [mounted, setMounted] = useState<Set<TabId>>(new Set(['translate']));
@@ -82,14 +82,15 @@ function Main() {
     setMounted((m) => (m.has(t) ? m : new Set(m).add(t)));
   }, []);
   const nav: Nav = useMemo(() => ({
-    openSettings: () => setSettingsOpen(true),
+    // 有的地方直接把 openSettings 当 onPress 传，收到的是点击事件，只认字符串
+    openSettings: (t?: SettingsTab) => setSettingsOpen(typeof t === 'string' ? t : 'ai'),
     openPlayer: (id: string) => setPlaying(id),
     openCatRoom: () => setCatRoomOpen(true),
     goTab,
   }), [goTab]);
 
   const closePlayer = useCallback(() => setPlaying(null), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const closeSettings = useCallback(() => setSettingsOpen(null), []);
   const closeCatRoom = useCallback(() => setCatRoomOpen(false), []);
 
   return (
@@ -128,7 +129,7 @@ function Main() {
         </View>
       </View>
       {playing ? <View style={StyleSheet.absoluteFill}><PlayerScreen id={playing} onClose={closePlayer} /></View> : null}
-      {settingsOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><SettingsScreen onBack={closeSettings} /></View></View> : null}
+      {settingsOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><SettingsScreen initialTab={settingsOpen} onBack={closeSettings} /></View></View> : null}
       {catRoomOpen ? <View style={[StyleSheet.absoluteFill, { backgroundColor: c.bg }]}><View style={styles.page}><CatRoomScreen onBack={closeCatRoom} /></View></View> : null}
       </View>
       <Welcome />

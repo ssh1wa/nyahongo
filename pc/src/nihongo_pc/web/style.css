@@ -450,6 +450,9 @@ rt { font-size: .46em; color: var(--ruby); letter-spacing: 0; font-family: var(-
   background: var(--accent-soft); color: var(--ink);
 }
 .setup-banner span { color: var(--ink-2); font-size: 13px; }
+.fw-slot:empty { display: none; }
+.fw-banner { background: #fbe9d4; }
+.side-lan.warn::before { content: "⚠ 手机可能连不上"; display: block; color: #b4531f; font-weight: 700; }
 
 /* ---------- 设置页 ---------- */
 .settings-page { max-width: 760px; }

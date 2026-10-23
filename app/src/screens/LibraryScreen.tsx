@@ -20,7 +20,7 @@ export function LibraryScreen({ active }: { active: boolean }) {
   const { prefs } = useTheme();
   const nav = useNav();
   const onOpen = nav.openPlayer;
-  const onGoSettings = nav.openSettings;
+  const onGoSettings = useCallback(() => nav.openSettings('sync'), [nav]);
   const [local, setLocal] = useState<LocalPackage[]>([]);
   const [remote, setRemote] = useState<PackageMeta[] | null>(null);
   const [pcUrl, setPcUrl] = useState('');
@@ -141,8 +141,11 @@ export function LibraryScreen({ active }: { active: boolean }) {
         </Card>
       ) : remoteError ? (
         <View style={{ gap: 8 }}>
-          <ErrorNote message={`连不上 PC 端（${pcUrl}）：${remoteError}\n确认 PC 端开着，手机和电脑连的是同一个 Wi-Fi。`} />
-          <Button label="看连接教程" kind="secondary" small onPress={() => setGuide(true)} icon={<CircleHelp size={14} color={c.ink} />} />
+          <ErrorNote message={`连不上 PC 端（${pcUrl}）：${remoteError}\n确认 PC 端开着，手机和电脑连的是同一个 Wi-Fi；PC 端窗口上方如果提示「手机可能连不上这台电脑」，点「一键放行」。`} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button label="看连接教程" kind="secondary" small onPress={() => setGuide(true)} icon={<CircleHelp size={14} color={c.ink} />} style={{ flex: 1 }} />
+            <Button label="改 PC 端地址" kind="secondary" small onPress={onGoSettings} style={{ flex: 1 }} />
+          </View>
         </View>
       ) : remote && !available.length ? (
         <Text style={{ color: c.muted }}>电脑上的学习包都已经下载了</Text>

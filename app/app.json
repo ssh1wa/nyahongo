@@ -2,7 +2,7 @@
   "expo": {
     "name": "にゃほんご",
     "slug": "kotoba-seichou",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "orientation": "default",
     "scheme": "nyahongo",
     "icon": "./assets/icon.png",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.nihongostudy.seichou",
-      "versionCode": 7,
+      "versionCode": 8,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#C8553D",

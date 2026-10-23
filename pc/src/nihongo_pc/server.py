@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from .config import load_config
 from .dictionary import ATTRIBUTION
 from .package import make_thumbnail
-from . import phone_dict, settings, sync, updates
+from . import firewall, phone_dict, settings, sync, updates
 from . import config as _config
 from .config import LlmConfig
 from .llm import LlmError, chat_json, list_models
@@ -62,21 +62,34 @@ async def lan_read_only(request: Request, call_next):
     return response
 
 
+def _addr_rank(a: str) -> int:
+    """家用路由器常见的网段排前面；172.16~31 多半是 WSL、Hyper-V、Docker 的虚拟网卡，排后面"""
+    if a.startswith("192.168."):
+        return 0
+    if a.startswith("10."):
+        return 1
+    return 2
+
+
 def lan_addresses() -> list[str]:
-    """本机在局域网里的 IPv4 地址（排除回环和虚拟网卡常见的 169.254）。"""
+    """本机在局域网里的 IPv4 地址（排除回环和 169.254），第一个是界面上显示给手机填的。
+    默认上网的网卡排第一：只按字母排的话，WSL 虚拟网卡的 172.x 会排到真正的 192.168.x 前面，手机连不上。"""
     addrs: set[str] = set()
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             addrs.add(info[4][0])
     except OSError:
         pass
+    primary = None
     try:  # 找默认出口网卡的地址，不会真的发包
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("223.5.5.5", 53))
-            addrs.add(s.getsockname()[0])
+            primary = s.getsockname()[0]
+            addrs.add(primary)
     except OSError:
         pass
-    return sorted(a for a in addrs if not a.startswith(("127.", "169.254.")))
+    usable = [a for a in addrs if not a.startswith(("127.", "169.254."))]
+    return sorted(usable, key=lambda a: (a != primary, _addr_rank(a), a))
 
 
 @app.get("/api/ping")
@@ -151,6 +164,19 @@ def check_update(force: bool = False) -> dict:
 def lan_info() -> dict:
     port = _lan["port"]
     return {"enabled": _lan["enabled"], "urls": [f"http://{a}:{port}" for a in lan_addresses()]}
+
+
+@app.get("/api/firewall")
+def firewall_status() -> dict:
+    """手机要连进来，Windows 防火墙得放行这个端口；还没放行就让界面提示"""
+    port = _lan["port"]
+    return {"needed": bool(_lan["enabled"]) and firewall.needs_rule(port), "port": port}
+
+
+@app.post("/api/firewall/allow")
+def firewall_allow() -> dict:
+    """弹出 Windows 的管理员授权框，同意后加放行规则。只有本机能调（手机的 POST 会被上面的中间件拦掉）"""
+    return {"ok": firewall.allow(_lan["port"])}
 
 
 # ---------- 多设备同步 ----------
@@ -337,7 +363,14 @@ class JobRequest(BaseModel):
     lang: str = "ja"
     work: str | None = None
     terms: str | None = None
-    auto_work: bool = False
+    auto_work: bool | None = None  # 不传：填了 AI 的 Key 就自动识别作品名
+
+
+def _auto_work(value: bool | None) -> bool:
+    if value is not None:
+        return value
+    cfg = load_config()
+    return bool(cfg.llm.key() and cfg.llm.model)
 
 
 def _work(value: str | None, limit: int = 80) -> str | None:
@@ -351,7 +384,7 @@ def create_job(req: JobRequest) -> dict:
         raise HTTPException(400, "请输入链接")
     return _submit(Job(id=uuid.uuid4().hex[:8], source=source, display=req.title or source,
                        audio_only=req.audio_only, overwrite=req.overwrite, title=req.title, lang=_lang(req.lang),
-                       work=_work(req.work), terms=_work(req.terms, 500), auto_work=req.auto_work))
+                       work=_work(req.work), terms=_work(req.terms, 500), auto_work=_auto_work(req.auto_work)))
 
 
 # ---------- 手机离线词典 ----------
@@ -405,7 +438,7 @@ class BatchRequest(BaseModel):
     lang: str = "ja"
     work: str | None = None
     terms: str | None = None
-    auto_work: bool = False
+    auto_work: bool | None = None
 
 
 @app.post("/api/jobs/batch")
@@ -428,7 +461,7 @@ def create_jobs(req: BatchRequest) -> dict:
                 failed.append(f"{source}：{e}")
         for url, display in items:
             created.append(_submit(Job(id=uuid.uuid4().hex[:8], source=url, display=display, audio_only=req.audio_only, lang=lang,
-                                       work=_work(req.work), terms=_work(req.terms, 500), auto_work=req.auto_work)))
+                                       work=_work(req.work), terms=_work(req.terms, 500), auto_work=_auto_work(req.auto_work))))
     if not created:
         raise HTTPException(400, "没有可处理的链接")
     return {"created": len(created), "failed": failed}
@@ -436,7 +469,7 @@ def create_jobs(req: BatchRequest) -> dict:
 
 @app.post("/api/upload")
 async def upload(request: Request, filename: str, audio_only: bool = False, lang: str = "ja",
-                 work: str | None = None, terms: str | None = None, auto_work: bool = False) -> dict:
+                 work: str | None = None, terms: str | None = None, auto_work: bool | None = None) -> dict:
     """浏览器拿不到本地文件路径，所以把文件流式传到 workspace/uploads 再处理。"""
     name = Path(filename).name
     if not name:
@@ -450,7 +483,7 @@ async def upload(request: Request, filename: str, audio_only: bool = False, lang
     title = Path(name).stem
     return _submit(Job(id=uuid.uuid4().hex[:8], source=str(target), display=title,
                        audio_only=audio_only, title=title, lang=_lang(lang), work=_work(work),
-                       terms=_work(terms, 500), auto_work=auto_work))
+                       terms=_work(terms, 500), auto_work=_auto_work(auto_work)))
 
 
 @app.get("/api/jobs")

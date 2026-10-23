@@ -26,11 +26,12 @@ import {
   dailyCalls, deepinfraMonth, deepseekBalance, localUsage, providerKeys,
   type DeepInfraMonth, type DeepSeekBalance, type UsageKind, type UsageRange, type UsageTotal,
 } from '../lib/usage';
+import type { SettingsTab } from '../nav';
 import { ACCENTS, radius, TEXT_SCALES, useColors, useTheme, type AccentId, type ThemeMode } from '../theme';
 
 const LEVELS: Level[] = ['入门', 'N5', 'N4', 'N3', 'N2', 'N1'];
 
-type Tab = 'ai' | 'usage' | 'learn' | 'look' | 'sync' | 'about';
+type Tab = SettingsTab;
 
 const TABS: Array<{ id: Tab; label: string; Icon: typeof Sun }> = [
   { id: 'ai', label: 'AI 接口', Icon: Bot },
@@ -41,10 +42,11 @@ const TABS: Array<{ id: Tab; label: string; Icon: typeof Sun }> = [
   { id: 'about', label: '关于', Icon: Info },
 ];
 
-export function SettingsScreen({ onBack }: { onBack: () => void }) {
+export function SettingsScreen({ initialTab = 'ai', onBack }: { initialTab?: Tab; onBack: () => void }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<Tab>('ai');
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const tabsRef = useRef<ScrollView>(null);
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => sub.remove();
@@ -56,7 +58,9 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
         <Pressable onPress={onBack} hitSlop={10} style={styles.back}><ChevronLeft size={26} color={c.ink} /></Pressable>
         <Text style={{ color: c.ink, fontSize: 20, fontWeight: '800' }}>设置</Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
+      <ScrollView ref={tabsRef} horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}
+        // 直接打开靠后的栏时，把标签栏滚到能看见它
+        onContentSizeChange={() => { if (initialTab === 'sync' || initialTab === 'about') tabsRef.current?.scrollToEnd({ animated: false }); }}>
         {TABS.map(({ id, label, Icon }) => {
           const on = tab === id;
           return (
