@@ -6,7 +6,7 @@ import { Alert, Animated, BackHandler, Easing, Modal, Pressable, ScrollView, Sty
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGame } from '../components/Companion';
 import { RubyText } from '../components/Ruby';
-import { Button, Card, Segmented, SectionLabel, Tag } from '../components/Ui';
+import { Button, Card, Segmented, SectionLabel, sheetBottom, Tag } from '../components/Ui';
 import { RoomView } from '../game/Room';
 import { Storeroom, type StoreTarget } from '../game/Storeroom';
 import { CatPortrait, ChestAnimation, ItemIcon, SceneThumb } from '../game/Sprites';
@@ -345,7 +345,7 @@ function ItemSheet({ item, game, onClose }: { item: Item; game: GameState; onClo
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: sheetBottom(insets, 16) }]}>
         <Pressable onPress={onClose} hitSlop={10} style={{ alignSelf: 'flex-end' }}><X size={22} color={c.muted} /></Pressable>
         {has ? <ItemBody item={item} /> : (
           <View style={{ alignItems: 'center', gap: 10 }}>
@@ -427,7 +427,7 @@ function InfoSheet({ title, onClose, children }: { title: string; onClose: () =>
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: c.bg, paddingBottom: insets.bottom + 16, maxHeight: '82%' }]}>
+      <View style={[styles.sheet, { backgroundColor: c.bg, paddingBottom: sheetBottom(insets, 16), maxHeight: '82%' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ flex: 1, color: c.ink, fontSize: 17, fontWeight: '800' }}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>

@@ -4,7 +4,7 @@ import { BookMarked, CheckCheck, RefreshCw, RotateCcw, Sparkles, Trash2, X } fro
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Card, EmptyState, ErrorNote, ScreenHeader, Segmented, SectionLabel, Tag, Title } from '../components/Ui';
+import { Button, Card, EmptyState, ErrorNote, ScreenHeader, Segmented, SectionLabel, sheetBottom, Tag, Title } from '../components/Ui';
 import { DetailView } from '../components/WordDetailView';
 import { EntryView } from '../components/WordSheet';
 import { onSynced } from '../lib/sync';
@@ -153,7 +153,7 @@ function WordDetailSheet({ word, onClose, onChanged, onDeleted }: {
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 14 }]}>
+      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: sheetBottom(insets, 14) }]}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>

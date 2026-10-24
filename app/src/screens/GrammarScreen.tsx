@@ -2,7 +2,7 @@
 import { BookCheck, Check, ChevronLeft, ChevronRight, CircleDot, GraduationCap, RefreshCw, Search, Sparkles } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { award } from '../lib/game';
-import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { RubyText } from '../components/Ruby';
 import { Button, Card, EmptyState, ErrorNote, ScreenHeader, Segmented, SectionLabel, Tag } from '../components/Ui';
 import {
@@ -110,9 +110,6 @@ function Course({ level, setLevel, course, progress, zh, onDesigned, onUnit, onL
     setBusy(true); setError('');
     try { onDesigned(await designCourse(level)); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
-  const redesign = () => Alert.alert('重新设计课程', '会重新排列单元，已学的进度保留。', [
-    { text: '取消', style: 'cancel' }, { text: '重新设计', onPress: design },
-  ]);
 
   const q = query.trim().toLowerCase();
   const found = useMemo(() => (q
@@ -174,7 +171,6 @@ function Course({ level, setLevel, course, progress, zh, onDesigned, onUnit, onL
               </Pressable>
             );
           })}
-          <Button label="重新设计课程" kind="ghost" small onPress={redesign} icon={<RefreshCw size={14} color={c.ink2} />} />
         </>
       )}
       <Text style={{ color: c.muted, fontSize: 11, textAlign: 'center' }}>{ATTRIBUTION}</Text>

@@ -9,7 +9,7 @@ import type { DictEntry } from '../lib/types';
 import { cachedDetail, entryDetail } from '../lib/wordDetail';
 import { addWord, isSaved, type WordDetail } from '../lib/wordbook';
 import { useColors } from '../theme';
-import { Button, Tag } from './Ui';
+import { Button, sheetBottom, Tag } from './Ui';
 import { DetailView } from './WordDetailView';
 import { EntryView } from './WordSheet';
 
@@ -31,6 +31,7 @@ export function LookupSheet({ word, entry: preset, context, contextZh, onClose }
   const [translating, setTranslating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -86,20 +87,26 @@ export function LookupSheet({ word, entry: preset, context, contextZh, onClose }
     }
   };
   const save = async () => {
-    await addWord({
-      entry,
-      headword: head,
-      reading: entry?.readings[0] ?? word.reading ?? null,
-      context,
-      contextZh,
-    });
-    setSaved(true);
+    if (saved || loading || (!entry && !word.meaning)) return; // 还在查词时点了就忽略
+    setSaveError('');
+    try {
+      await addWord({
+        entry,
+        headword: head,
+        reading: entry?.readings[0] ?? word.reading ?? null,
+        context,
+        contextZh,
+      });
+      setSaved(true);
+    } catch (e) {
+      setSaveError(`没能加入生词本：${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: sheetBottom(insets, 16) }]}>
         <View style={styles.headRow}>
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
@@ -112,7 +119,7 @@ export function LookupSheet({ word, entry: preset, context, contextZh, onClose }
           <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>
         </View>
 
-        <ScrollView style={{ maxHeight: detail ? height * 0.62 : 420 }} contentContainerStyle={{ gap: 12 }}>
+        <ScrollView style={{ maxHeight: detail ? height * 0.62 : 420 }} contentContainerStyle={{ gap: 12 }} keyboardShouldPersistTaps="handled">
           {loading ? (
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
               <ActivityIndicator color={c.accent} />
@@ -168,8 +175,9 @@ export function LookupSheet({ word, entry: preset, context, contextZh, onClose }
           ) : null}
         </ScrollView>
 
+        {saveError ? <Text style={{ color: c.err, fontSize: 12.5 }}>{saveError}</Text> : null}
         <Button
-          label={saved ? '已在生词本' : '加入生词本'}
+          label={saved ? '已在生词本' : loading ? '查词中…' : '加入生词本'}
           kind={saved ? 'secondary' : 'primary'}
           disabled={saved || loading || (!entry && !word.meaning)}
           onPress={save}

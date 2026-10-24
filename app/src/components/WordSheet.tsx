@@ -11,7 +11,7 @@ import type { DictEntry, Sentence } from '../lib/types';
 import { addFromToken, isSaved } from '../lib/wordbook';
 import { radius, useColors } from '../theme';
 import { RubyText } from './Ruby';
-import { Button, ErrorNote, Tag } from './Ui';
+import { Button, ErrorNote, sheetBottom, Tag } from './Ui';
 
 export function EntryView({ entry }: { entry: DictEntry }) {
   const c = useColors();
@@ -53,9 +53,13 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, english
 
   const head = entry ? entry.kanji[0] || entry.readings[0] : token.base ?? token.surface;
   const save = async () => {
-    const added = await addFromToken(token, entry, sentence, packageId);
-    setSaved(true);
-    if (!added) setError('');
+    try {
+      const added = await addFromToken(token, entry, sentence, packageId);
+      setSaved(true);
+      if (!added) setError('');
+    } catch (e) {
+      setError(`没能加入生词本：${e instanceof Error ? e.message : String(e)}`);
+    }
   };
   const ask = async () => {
     const q = question.trim() || `「${token.surface}」在这句话里是什么意思、什么用法？`;
@@ -90,7 +94,7 @@ export function WordSheet({ sentence, tokenIndex, dictionary, packageId, english
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: sheetBottom(insets, 16) }]}>
         <View style={styles.headRow}>
           <View style={{ flex: 1, gap: 2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>

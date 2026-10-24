@@ -12,7 +12,7 @@ import { radius, useColors, useScale, useTheme } from '../theme';
 import { LookupSheet, type LookupWord } from './LookupSheet';
 import { References } from './References';
 import { RubyText } from './Ruby';
-import { Button, ErrorNote, IconButton, SectionLabel, Tag } from './Ui';
+import { Button, ErrorNote, IconButton, SectionLabel, sheetBottom, Tag } from './Ui';
 
 export function Reader({ id, initial, onBack }: { id: number; initial: Article; onBack: () => void }) {
   const c = useColors();
@@ -151,7 +151,7 @@ function SentenceSheet({ sentence, level, onClose }: { sentence: ReadingSentence
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: insets.bottom + 14 }]}>
+      <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: sheetBottom(insets, 14) }]}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
           <View style={{ flex: 1 }}><RubyText segments={sentence.segments!} size={21} zh={sentence.zh} /></View>
           <Pressable onPress={onClose} hitSlop={10}><X size={22} color={c.muted} /></Pressable>

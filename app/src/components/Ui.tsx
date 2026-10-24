@@ -6,6 +6,9 @@ import { useNav } from '../nav';
 import { radius, useColors } from '../theme';
 import { Companion } from './Companion';
 
+/** 底部弹出面板的下边距：屏幕最底部约 20dp 是手机的手势区，点在那里没反应，所以至少留 24dp，按钮整个落在手势区之上 */
+export const sheetBottom = (insets: { bottom: number }, extra: number) => Math.max(insets.bottom, 24) + extra;
+
 export function Button({ label, onPress, kind = 'primary', loading, disabled, icon, style, small }: {
   label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'ghost' | 'danger';
   loading?: boolean; disabled?: boolean; icon?: React.ReactNode; style?: StyleProp<ViewStyle>; small?: boolean;
@@ -14,10 +17,11 @@ export function Button({ label, onPress, kind = 'primary', loading, disabled, ic
   const bg = { primary: c.accent, secondary: c.surface, ghost: 'transparent', danger: c.errSoft }[kind];
   const fg = { primary: c.accentInk, secondary: c.ink, ghost: c.ink2, danger: c.err }[kind];
   const off = disabled || loading;
+  // 不把 disabled 交给 Pressable：在弹窗里先禁用、后启用的按钮（比如查词面板的「加入生词本」），Android 上只有中间的文字和图标
+  // 那一小块能点中，左右两边的空白点了没反应。所以一直保持可点，禁用和加载时在这里忽略，样式照常变淡
   return (
     <Pressable
-      onPress={onPress}
-      disabled={off}
+      onPress={() => { if (!off) onPress(); }}
       style={({ pressed }) => [
         styles.button,
         small && styles.small,

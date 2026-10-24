@@ -3,7 +3,7 @@ import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ChevronLeft, Pause, Play, Repeat, RotateCcw, SkipBack, SkipForward, StopCircle } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TokenText } from '../components/Ruby';
 import { WordSheet } from '../components/WordSheet';
@@ -18,6 +18,11 @@ const RATES = [0.75, 0.9, 1, 1.25];
 const PREROLL = 0.08; // 跳到句首时稍微提前一点，Whisper 的起始时间常常偏晚
 
 const noop = () => {};
+
+// 横屏时视频面板占整个宽度的比例：拖中间的分隔条调，范围限制一下，免得字幕或视频被挤没了
+const SPLIT_MIN = 0.3;
+const SPLIT_MAX = 0.75;
+const clampSplit = (v: number) => Math.max(SPLIT_MIN, Math.min(SPLIT_MAX, v));
 
 function fmt(sec: number) {
   const s = Math.max(0, Math.floor(sec));
@@ -79,6 +84,27 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const [zhMode, setZhMode] = useState<ZhMode>('tap');
   const [zhRevealed, setZhRevealed] = useState(false);
   const [word, setWord] = useState<{ sentence: number; token: number } | null>(null);
+  // 横屏布局：视频面板的宽度比例、在左边还是右边（都会记住）
+  const [split, setSplit] = useState(0.5);
+  const [side, setSide] = useState<'left' | 'right'>('left');
+  const splitRef = useRef(0.5);
+  const sideRef = useRef<'left' | 'right'>('left');
+  const widthRef = useRef(win.width);
+  const dragFrom = useRef(0.5);
+  splitRef.current = split;
+  sideRef.current = side;
+  widthRef.current = win.width;
+  const divider = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => { dragFrom.current = splitRef.current; },
+    onPanResponderMove: (_, g) => {
+      // 视频在右边时，往左拖是把视频拉大
+      const dir = sideRef.current === 'left' ? 1 : -1;
+      setSplit(clampSplit(dragFrom.current + (dir * g.dx) / widthRef.current));
+    },
+    onPanResponderRelease: () => { void kvSet('player.split', splitRef.current); },
+  }), []);
 
   // 用 ref 保存播放逻辑需要的最新状态，timeUpdate 回调里读
   const st = useRef({ idx: -1, loop: false, autoPause: false, pauseAt: null as number | null });
@@ -87,8 +113,11 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
 
   useEffect(() => {
     // 播放器里改过的开关会记住；没改过就用设置里的默认值
-    Promise.all([kvGet('player.loop', false), kvGet('player.autoPause', false), kvGet('player.rate', 1), kvGet('player.ruby', prefs.showRuby), kvGet<ZhMode>('player.zh', prefs.zhMode)])
-      .then(([l, a, r, ruby, zh]) => { setLoop(l); setAutoPause(a); setRate(r); setShowRuby(ruby); setZhMode(zh); player.playbackRate = r; });
+    Promise.all([kvGet('player.loop', false), kvGet('player.autoPause', false), kvGet('player.rate', 1), kvGet('player.ruby', prefs.showRuby), kvGet<ZhMode>('player.zh', prefs.zhMode), kvGet('player.split', 0.5), kvGet<'left' | 'right'>('player.side', 'left')])
+      .then(([l, a, r, ruby, zh, sp, sd]) => {
+        setLoop(l); setAutoPause(a); setRate(r); setShowRuby(ruby); setZhMode(zh); player.playbackRate = r;
+        setSplit(clampSplit(typeof sp === 'number' ? sp : 0.5)); setSide(sd === 'right' ? 'right' : 'left');
+      });
   }, [player]);
 
   const listRef = useRef<FlatList<Sentence>>(null);
@@ -217,7 +246,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
   const nowPanel = (
     <>
       {isVideo ? (
-        <Pressable onPress={togglePlay} style={[styles.video, wide && { aspectRatio: undefined, height: Math.round(win.height * 0.5) }]}>
+        <Pressable onPress={togglePlay} style={[styles.video, wide && { maxHeight: Math.round(win.height * 0.7) }]}>
           <VideoView player={player} style={StyleSheet.absoluteFill} nativeControls={false} contentFit="contain" />
         </Pressable>
       ) : null}
@@ -272,6 +301,7 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
         <Chip label={`${rate}×`} onPress={cycleRate} />
         {english ? null : <Chip label={showRuby ? '注音 开' : '注音 关'} onPress={() => toggle('player.ruby', !showRuby, setShowRuby)} />}
         {hasZh ? <Chip label={zhLabel} onPress={cycleZh} /> : null}
+        {wide ? <Chip label={side === 'left' ? '视频在左 ⇄' : '视频在右 ⇄'} onPress={() => { const s = side === 'left' ? 'right' : 'left'; setSide(s); void kvSet('player.side', s); }} /> : null}
         <Text style={{ color: c.muted, fontSize: 11.5 }}>{loop ? '单句循环中' : autoPause ? '每句读完暂停' : ''}</Text>
       </View>
     </>
@@ -285,9 +315,17 @@ function Player({ data, onClose }: { data: PackageData; onClose: () => void }) {
       </View>
 
       {/* 横屏 / 平板：左边视频和当前句，右边整篇字幕 */}
-      <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
+      <View style={{ flex: 1, flexDirection: wide ? (side === 'left' ? 'row' : 'row-reverse') : 'column' }}>
         {wide
-          ? <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom + 12 }}>{nowPanel}</ScrollView>
+          ? (
+            <>
+              <ScrollView style={{ width: Math.round(win.width * split), flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ paddingBottom: insets.bottom + 12 }}>{nowPanel}</ScrollView>
+              {/* 中间的分隔条：左右拖动调视频大小 */}
+              <View {...divider.panHandlers} style={styles.divider}>
+                <View style={[styles.grip, { backgroundColor: c.line }]} />
+              </View>
+            </>
+          )
           : nowPanel}
         <FlatList
           ref={listRef}
@@ -345,6 +383,8 @@ const styles = StyleSheet.create({
   iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontSize: 15, fontWeight: '700' },
   video: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' },
+  divider: { width: 24, alignItems: 'center', justifyContent: 'center' },
+  grip: { width: 5, height: 56, borderRadius: 3 },
   now: { marginHorizontal: 12, marginTop: 10, padding: 14, borderWidth: 1, borderRadius: radius.lg, minHeight: 96, gap: 6, justifyContent: 'center' },
   zh: { fontSize: 14.5, lineHeight: 21 },
   meta: { fontSize: 11.5 },
